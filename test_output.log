@@ -1,0 +1,11 @@
+╭──────────────────────────────────────────────────────────────╮
+│ ● OpenAI Codex (research preview) v0.1.31                    │
+╰──────────────────────────────────────────────────────────────╯
+╭──────────────────────────────────────────────────────────────────────────────╮
+│Warning! It can be dangerous to run a coding agent outside of a git repo in   │
+│case there are changes that you want to revert. Do you want to continue?      │
+│                                                                              │
+│/Users/Zhuanz/.gemini/antigravity/scratch/my-company-agent                    │
+│                                                                              │
+│y/N                                                                           │
+╰──────────────────────────────────────────────────────────────────────────────╯

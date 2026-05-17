@@ -1,0 +1,99 @@
+.renderer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.thinkBlock {
+  background-color: var(--bg-sidebar);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+
+.thinkBlock summary {
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.thinkBlock summary i {
+  color: var(--accent-color);
+}
+
+.thinkContent {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  border-left: 2px solid var(--border-color);
+  padding-left: 12px;
+}
+
+.markdownBlock {
+  color: var(--text-primary);
+}
+
+.markdownBlock p {
+  margin-bottom: 8px;
+}
+
+.markdownBlock pre {
+  background-color: var(--bg-sidebar);
+  padding: 12px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin-bottom: 8px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.markdownBlock code {
+  font-family: monospace;
+  background-color: var(--bg-sidebar);
+  padding: 2px 4px;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.thinkContent pre {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.fileDownloadLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background-color: var(--bg-sidebar);
+  border: 1px solid var(--border-color);
+  padding: 6px 12px;
+  border-radius: 8px;
+  color: var(--text-primary);
+  text-decoration: none;
+  font-weight: 500;
+  margin: 4px 0;
+  transition: all 0.2s;
+}
+
+.fileDownloadLink:hover {
+  background-color: var(--bg-hover);
+}
+
+.fileDownloadLink i {
+  color: var(--primary-color);
+}
+
+/* Global class for the superscript citations */
+:global(.citation) {
+  cursor: pointer;
+  color: #1677ff; /* link blue */
+  font-weight: 600;
+  padding: 0 2px;
+}
+:global(.citation:hover) {
+  text-decoration: underline;
+}

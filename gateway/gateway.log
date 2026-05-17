@@ -1,0 +1,14 @@
+Gateway listening on port 3000
+SSE Endpoint ready at http://localhost:3000/api/chat
+Worker [test_final] STDERR: (node:66265) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+Worker [test_final] STDERR: (node:66265) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+
+Worker [test_gateway] STDERR: (node:67085) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+Worker [test_gateway] STDERR: (node:67085) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+
+Client disconnected unexpectedly, killing worker [test_gateway]
+Worker [test_gateway] exited with code null

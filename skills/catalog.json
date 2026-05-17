@@ -1,0 +1,22 @@
+[
+  {
+    "id": "query_reimbursement_policy",
+    "brief": "查询公司内部的差旅、打车、餐饮等报销制度和规定。"
+  },
+  {
+    "id": "check_reimbursement_progress",
+    "brief": "查询某位员工当前报销单的审批进度状态。"
+  },
+  {
+    "id": "send_feishu_message",
+    "brief": "向指定员工、部门负责人或主管发送一条飞书消息或提醒。"
+  },
+  {
+    "id": "web_search",
+    "brief": "浅度联网搜索：查询互联网上的实时信息、新闻、百科等外部客观事实，返回摘要结果。"
+  },
+  {
+    "id": "deep_web_crawl",
+    "brief": "深度网页阅读：提供具体的URL链接，抓取并读取该网页的完整长篇内容（转为Markdown格式）。"
+  }
+]

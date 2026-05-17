@@ -1,0 +1,10 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Error</title>
+</head>
+<body>
+<pre>NotFoundError: Not Found<br> &nbsp; &nbsp;at createHttpError (/Users/Zhuanz/.gemini/antigravity/scratch/my-company-agent/gateway/node_modules/send/index.js:861:12)<br> &nbsp; &nbsp;at SendStream.error (/Users/Zhuanz/.gemini/antigravity/scratch/my-company-agent/gateway/node_modules/send/index.js:168:31)<br> &nbsp; &nbsp;at SendStream.pipe (/Users/Zhuanz/.gemini/antigravity/scratch/my-company-agent/gateway/node_modules/send/index.js:468:14)<br> &nbsp; &nbsp;at sendfile (/Users/Zhuanz/.gemini/antigravity/scratch/my-company-agent/gateway/node_modules/express/lib/response.js:1014:8)<br> &nbsp; &nbsp;at ServerResponse.sendFile (/Users/Zhuanz/.gemini/antigravity/scratch/my-company-agent/gateway/node_modules/express/lib/response.js:411:3)<br> &nbsp; &nbsp;at ServerResponse.download (/Users/Zhuanz/.gemini/antigravity/scratch/my-company-agent/gateway/node_modules/express/lib/response.js:488:15)<br> &nbsp; &nbsp;at Statement.&lt;anonymous&gt; (/Users/Zhuanz/.gemini/antigravity/scratch/my-company-agent/gateway/server.js:125:9)<br> &nbsp; &nbsp;at Statement.replacement (/Users/Zhuanz/.gemini/antigravity/scratch/my-company-agent/gateway/node_modules/sqlite3/lib/trace.js:25:27)<br> &nbsp; &nbsp;at Statement.replacement (/Users/Zhuanz/.gemini/antigravity/scratch/my-company-agent/gateway/node_modules/sqlite3/lib/trace.js:25:27)</pre>
+</body>
+</html>

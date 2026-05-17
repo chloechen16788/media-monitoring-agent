@@ -1,0 +1,10 @@
+node_modules/
+venv/
+sessions/
+.env
+__pycache__/
+*.pyc
+.DS_Store
+dist/
+models/
+chroma_db/
