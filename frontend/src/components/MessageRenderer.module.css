@@ -97,3 +97,272 @@
 :global(.citation:hover) {
   text-decoration: underline;
 }
+.inlineCard {
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  margin-top: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  max-width: 500px;
+}
+.cardHeader {
+  background: #f8f9fa;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e0e0e0;
+  font-weight: 600;
+  color: #333;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cardHeader i {
+  color: #1677ff;
+}
+.cardBody {
+  padding: 16px;
+}
+.cardBody p {
+  margin-top: 0;
+  margin-bottom: 12px;
+  font-size: 14px;
+  color: #666;
+}
+.cardTaskList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #fafafa;
+  padding: 12px;
+  border-radius: 6px;
+}
+.taskLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.addBtn {
+  background: none;
+  border: 1px dashed #d9d9d9;
+  color: #1677ff;
+  padding: 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-top: 4px;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+.addBtn:hover {
+  border-color: #1677ff;
+}
+.schemaTree {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #fafafa;
+  padding: 12px;
+  border-radius: 6px;
+}
+.treeNode {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.treeNode i {
+  color: #1677ff;
+}
+.cardFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 20px;
+}
+.cancelBtn {
+  background: white;
+  border: 1px solid #d9d9d9;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.confirmBtn {
+  background: #1677ff;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.confirmBtn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+.progressBar {
+  width: 100%;
+  height: 8px;
+  background-color: #f0f0f0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.progressFill {
+  height: 100%;
+  background-color: #1677ff;
+  transition: width 0.3s ease;
+}
+
+.categoryBlock {
+  background: #fafafa;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+.categoryHeader {
+  background: #f0f2f5;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid #e8e8e8;
+}
+.categoryHeader i.ri-folder-2-fill {
+  color: #1677ff;
+}
+.categoryTitleInput {
+  border: none;
+  background: transparent;
+  font-weight: 600;
+  color: #333;
+  font-size: 14px;
+  outline: none;
+  flex: 1;
+}
+.categoryTitleInput:hover, .categoryTitleInput:focus {
+  background: white;
+  border-radius: 4px;
+  box-shadow: 0 0 0 2px rgba(22,119,255,0.2);
+}
+.deleteCatBtn {
+  color: #ff4d4f;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+}
+.deleteCatBtn:hover {
+  background: #fff1f0;
+}
+.tagSection {
+  padding: 12px 14px;
+  border-bottom: 1px dashed #e8e8e8;
+}
+.tagSection:last-child {
+  border-bottom: none;
+}
+.tagLabel {
+  font-size: 13px;
+  color: #8c8c8c;
+  margin-bottom: 8px;
+}
+.pillContainer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.pillTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #e6f4ff;
+  border: 1px solid #91caff;
+  color: #1677ff;
+  padding: 4px 10px;
+  border-radius: 16px;
+  font-size: 13px;
+}
+.pillTag i {
+  cursor: pointer;
+  font-size: 14px;
+  border-radius: 50%;
+}
+.pillTag i:hover {
+  background: #bae0ff;
+}
+.dimTag {
+  background: #f6ffed;
+  border-color: #b7eb8f;
+  color: #52c41a;
+}
+.dimTag i.ri-close-line:hover {
+  background: #d9f7be;
+}
+.addSelect {
+  border: 1px dashed #d9d9d9;
+  background: white;
+  color: #666;
+  padding: 4px 8px;
+  border-radius: 16px;
+  font-size: 13px;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+}
+.addSelect:hover {
+  border-color: #1677ff;
+  color: #1677ff;
+}
+.addCategoryBtn {
+  width: 100%;
+  background: white;
+  border: 1px dashed #d9d9d9;
+  color: #666;
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.addCategoryBtn:hover {
+  border-color: #1677ff;
+  color: #1677ff;
+}
+.finishedCardBody {
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.finishedCardBody:hover {
+  background-color: #f6ffed;
+}
+
+.cardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.dateSelector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: white;
+  border: 1px solid #d9d9d9;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #666;
+}
+.dateSelector i {
+  color: #8c8c8c;
+}
+.dateSelector select {
+  border: none;
+  background: transparent;
+  outline: none;
+  color: #333;
+  cursor: pointer;
+}

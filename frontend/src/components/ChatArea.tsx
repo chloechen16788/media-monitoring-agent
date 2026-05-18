@@ -6,6 +6,8 @@ interface ChatAreaProps {
   userId: string;
   currentSessionId: string | null;
   onShowCitation: (text: string) => void;
+  onOpenWorkspace: (config: any) => void;
+  onUpdateInsight?: (target: string, text: string) => void;
 }
 
 interface Message {
@@ -14,7 +16,7 @@ interface Message {
   content: string;
 }
 
-export default function ChatArea({ userId, currentSessionId, onShowCitation }: ChatAreaProps) {
+export default function ChatArea({ userId, currentSessionId, onShowCitation, onOpenWorkspace, onUpdateInsight }: ChatAreaProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -22,6 +24,9 @@ export default function ChatArea({ userId, currentSessionId, onShowCitation }: C
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const [isInputLocked, setIsInputLocked] = useState(false);
 
   useEffect(() => {
     if (!currentSessionId) {
@@ -44,7 +49,9 @@ export default function ChatArea({ userId, currentSessionId, onShowCitation }: C
               currentAssistantMsg = null;
             }
             const text = typeof item.content === 'string' ? item.content : item.content.map((c:any) => c.text || '').join('');
-            parsedMessages.push({ id: Math.random().toString(), role: 'user', content: text });
+            if (!text.startsWith('[系统通知]')) {
+              parsedMessages.push({ id: Math.random().toString(), role: 'user', content: text });
+            }
           } else if (item.role === 'assistant') {
             if (!currentAssistantMsg) {
               currentAssistantMsg = { id: Math.random().toString(), role: 'assistant', content: '' };
@@ -55,7 +62,9 @@ export default function ChatArea({ userId, currentSessionId, onShowCitation }: C
             if (item.tool_calls) {
               textDelta += "\n<tool_call>\n```json\n" + JSON.stringify(item.tool_calls, null, 2) + "\n```\n</tool_call>\n";
             }
-            currentAssistantMsg.content += textDelta;
+            if (!textDelta.startsWith('[隐藏回复]')) {
+              currentAssistantMsg.content += textDelta;
+            }
           } else if (item.role === 'tool') {
             if (!currentAssistantMsg) {
               currentAssistantMsg = { id: Math.random().toString(), role: 'assistant', content: '' };
@@ -80,6 +89,18 @@ export default function ChatArea({ userId, currentSessionId, onShowCitation }: C
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isStreaming]);
 
+  useEffect(() => {
+    if (!onUpdateInsight) return;
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg && lastMsg.role === 'assistant') {
+      const regex = /<UPDATE_INSIGHT target="([^"]+)">([\s\S]*?)(?:<\/UPDATE_INSIGHT>|$)/g;
+      let match;
+      while ((match = regex.exec(lastMsg.content)) !== null) {
+        onUpdateInsight(match[1], match[2]);
+      }
+    }
+  }, [messages, onUpdateInsight]);
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!currentSessionId || !e.target.files || e.target.files.length === 0) return;
     
@@ -101,16 +122,11 @@ export default function ChatArea({ userId, currentSessionId, onShowCitation }: C
     }
   };
 
-  const handleSend = async () => {
-    if ((!input.trim() && !attachedFilePath) || !currentSessionId || isStreaming) return;
-
-    let finalPrompt = input;
-    if (attachedFilePath) {
-      finalPrompt = `请参考附件 ${attachedFilePath}。 ${input}`;
-    }
-
+  const sendPrompt = async (promptText: string) => {
+    if (!currentSessionId || isStreaming) return;
+    
     const userMsgId = Date.now().toString();
-    setMessages(prev => [...prev, { id: userMsgId, role: 'user', content: finalPrompt }]);
+    setMessages(prev => [...prev, { id: userMsgId, role: 'user', content: promptText }]);
     setInput('');
     setAttachedFilePath(null);
     setIsStreaming(true);
@@ -118,12 +134,28 @@ export default function ChatArea({ userId, currentSessionId, onShowCitation }: C
     const assistantMsgId = (Date.now() + 1).toString();
     setMessages(prev => [...prev, { id: assistantMsgId, role: 'assistant', content: '' }]);
 
+    // ==== MOCK INTERCEPTOR ====
+    if (promptText.includes('分析') || promptText.includes('报告') || promptText.includes('月报') || promptText.includes('监测')) {
+      setTimeout(() => {
+        setMessages(prev => prev.map(m => 
+          m.id === assistantMsgId 
+            ? { ...m, content: "好的，我已经为您初步理解了需求。请在下方弹出的卡片中完成多维度分析的配置。\n\n[WORKSPACE_SCHEMA_START]{\"mock\":true}[WORKSPACE_SCHEMA_END]" }
+            : m
+        ));
+        setIsStreaming(false);
+      }, 800);
+      return;
+    }
+    // ==========================
+
     try {
+      abortControllerRef.current = new AbortController();
       const response = await fetch(`http://localhost:3000/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: abortControllerRef.current.signal,
         body: JSON.stringify({
-          prompt: finalPrompt,
+          prompt: promptText,
           sessionId: currentSessionId,
           userId,
           model: 'MiniMax-M2.7',
@@ -153,7 +185,6 @@ export default function ChatArea({ userId, currentSessionId, onShowCitation }: C
                 if (event.type === 'item') {
                   const role = event.data.role;
                   
-                  // For simplicity, we append tool contents and assistant contents directly
                   if (role === 'assistant' && event.data.content) {
                     let textDelta = typeof event.data.content === 'string' 
                       ? event.data.content 
@@ -187,12 +218,50 @@ export default function ChatArea({ userId, currentSessionId, onShowCitation }: C
           }
         }
       }
-    } catch (err) {
-      console.error("Chat error", err);
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        console.log("Chat aborted by user");
+        setMessages(prev => prev.map(m => 
+          m.id === assistantMsgId 
+            ? { ...m, content: m.content + "\n\n*[用户已手动中断对话]*" }
+            : m
+        ));
+      } else {
+        console.error("Chat error", err);
+      }
     } finally {
       setIsStreaming(false);
+      abortControllerRef.current = null;
     }
   };
+
+  const handleSend = () => {
+    if (isStreaming) {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      return;
+    }
+    if ((!input.trim() && !attachedFilePath)) return;
+    let finalPrompt = input;
+    if (attachedFilePath) {
+      finalPrompt = `请参考附件 ${attachedFilePath}。 ${input}`;
+    }
+    sendPrompt(finalPrompt);
+  };
+
+  const renderWelcomeScreen = () => (
+    <div className={styles.emptyState}>
+      <h2>你好，我是你的智能分析助手。</h2>
+      <p>您可以直接向我提问，或选择快速生成以下专业报告：</p>
+      <div className={styles.presetCapsules}>
+        <button onClick={() => sendPrompt("我想生成一份【品牌月报】")}><i className="ri-bar-chart-box-line"></i> 品牌月报</button>
+        <button onClick={() => sendPrompt("我想生成一份【竞品分析】报告，请提供配置面板")}><i className="ri-sword-line"></i> 竞品分析</button>
+        <button onClick={() => sendPrompt("我想生成一份【议题监测】")}><i className="ri-radar-line"></i> 议题监测</button>
+        <button onClick={() => sendPrompt("我想生成一份【领导人声誉】报告")}><i className="ri-user-star-line"></i> 领导人声誉</button>
+      </div>
+    </div>
+  );
 
   return (
     <div className={styles.chatArea}>
@@ -204,19 +273,20 @@ export default function ChatArea({ userId, currentSessionId, onShowCitation }: C
       ) : (
         <>
           <div className={styles.messageList}>
-            {messages.length === 0 && (
-              <div className={styles.emptyState}>
-                <h2>你好，</h2>
-                <p>我今天能帮你什么？</p>
-              </div>
-            )}
+            {messages.length === 0 && renderWelcomeScreen()}
             {messages.map(msg => (
               <div key={msg.id} className={`${styles.messageWrapper} ${styles[msg.role]}`}>
                 <div className={styles.avatar}>
                   {msg.role === 'user' ? <i className="ri-user-line"></i> : <i className="ri-robot-2-fill"></i>}
                 </div>
                 <div className={styles.messageContent}>
-                  <MessageRenderer content={msg.content} onShowCitation={onShowCitation} sessionId={currentSessionId} />
+                  <MessageRenderer 
+                    content={msg.content.replace(/<UPDATE_INSIGHT target="[^"]+">[\s\S]*?(?:<\/UPDATE_INSIGHT>|$)/g, '\n\n*[✨ 正在将深度洞察投射至右侧大屏...]*\n\n')} 
+                    onShowCitation={onShowCitation} 
+                    onOpenWorkspace={onOpenWorkspace} 
+                    onLockInput={setIsInputLocked}
+                    sessionId={currentSessionId} 
+                  />
                 </div>
               </div>
             ))}
@@ -224,7 +294,7 @@ export default function ChatArea({ userId, currentSessionId, onShowCitation }: C
           </div>
 
           <div className={styles.inputContainer}>
-            <div className={styles.inputBox}>
+            <div className={`${styles.inputBox} ${isInputLocked ? styles.locked : ''}`}>
               {attachedFilePath && (
                 <div className={styles.attachmentBadge}>
                   <i className="ri-attachment-2"></i> {attachedFilePath.split('/').pop()}
@@ -234,12 +304,13 @@ export default function ChatArea({ userId, currentSessionId, onShowCitation }: C
               <textarea
                 value={input}
                 onChange={e => setInput(e.target.value)}
-                placeholder="问任何问题，@模型 / 提示"
+                placeholder={isInputLocked ? "⚠️ 请先完成上方卡片内的报告配置" : "问任何问题，@模型 / 提示"}
                 rows={2}
+                disabled={isInputLocked}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
-                    handleSend();
+                    if (!isInputLocked) handleSend();
                   }
                 }}
               />
@@ -251,16 +322,17 @@ export default function ChatArea({ userId, currentSessionId, onShowCitation }: C
                     ref={fileInputRef} 
                     onChange={handleFileUpload}
                   />
-                  <button onClick={() => fileInputRef.current?.click()} title="添加附件">
+                  <button onClick={() => fileInputRef.current?.click()} title="添加附件" disabled={isInputLocked}>
                     <i className="ri-attachment-line"></i>
                   </button>
-                  <button><i className="ri-lightbulb-flash-line"></i> 思考</button>
-                  <button><i className="ri-tools-line"></i> 工具</button>
+                  <button disabled={isInputLocked}><i className="ri-lightbulb-flash-line"></i> 思考</button>
+                  <button disabled={isInputLocked}><i className="ri-tools-line"></i> 工具</button>
                 </div>
                 <div className={styles.rightActions}>
                   <button 
                     className={`${styles.sendBtn} ${isStreaming ? styles.streaming : ''}`} 
                     onClick={handleSend}
+                    disabled={isInputLocked}
                   >
                     {isStreaming ? <i className="ri-stop-circle-line"></i> : <i className="ri-send-plane-fill"></i>}
                   </button>

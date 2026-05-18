@@ -158,7 +158,36 @@ app.get('/api/sessions/:sessionId/history', (req, res) => {
   }
 });
 
-// 创建新会话
+// 插入单条系统/上下文消息到历史记录
+app.post('/api/sessions/:sessionId/message', (req, res) => {
+  const { sessionId } = req.params;
+  const { message } = req.body;
+  if (!message) return res.status(400).json({ error: 'message object is required' });
+
+  const historyFile = path.resolve(__dirname, `../sessions/${sessionId}/messages.json`);
+  let history = [];
+  if (fs.existsSync(historyFile)) {
+    try {
+      history = JSON.parse(fs.readFileSync(historyFile, 'utf8'));
+    } catch (e) {
+      history = [];
+    }
+  }
+  
+  if (Array.isArray(message)) {
+    history.push(...message);
+  } else {
+    history.push(message);
+  }
+  
+  const sessionDir = path.dirname(historyFile);
+  if (!fs.existsSync(sessionDir)) {
+    fs.mkdirSync(sessionDir, { recursive: true });
+  }
+  
+  fs.writeFileSync(historyFile, JSON.stringify(history, null, 2), 'utf8');
+  res.json({ success: true });
+});
 app.post('/api/sessions', (req, res) => {
   const { userId, title } = req.body;
   if (!userId) return res.status(400).json({ error: 'userId is required' });
@@ -265,6 +294,54 @@ app.post('/api/chat', (req, res) => {
       }
     });
   });
+});
+
+// ==========================================
+// 5. 报告生成与数据抽取接口
+// ==========================================
+app.post('/api/generate-report', (req, res) => {
+  const config = req.body;
+  
+  if (!config) {
+    return res.status(400).json({ error: 'Config body is required' });
+  }
+  
+  const runnerPath = path.resolve(__dirname, '../skills/run_es_agent.py');
+  
+  // 启动 Python 子进程
+  const runner = spawn('python3', [runnerPath], {
+    cwd: path.resolve(__dirname, '../skills')
+  });
+  
+  let output = '';
+  let errorOutput = '';
+  
+  runner.stdout.on('data', (data) => {
+    output += data.toString();
+  });
+  
+  runner.stderr.on('data', (data) => {
+    errorOutput += data.toString();
+  });
+  
+  runner.on('close', (code) => {
+    if (code !== 0) {
+      console.error(`Python runner exited with code ${code}. Error: ${errorOutput}`);
+      return res.status(500).json({ error: 'Data generation failed', details: errorOutput });
+    }
+    
+    try {
+      const parsedData = JSON.parse(output);
+      res.json(parsedData);
+    } catch (e) {
+      console.error('Failed to parse python output:', output);
+      res.status(500).json({ error: 'Invalid JSON from python script', rawOutput: output });
+    }
+  });
+  
+  // 向 Python 脚本写入 JSON 配置
+  runner.stdin.write(JSON.stringify(config));
+  runner.stdin.end();
 });
 
 const PORT = process.env.PORT || 3000;

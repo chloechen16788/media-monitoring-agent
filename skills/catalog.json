@@ -18,5 +18,13 @@
   {
     "id": "deep_web_crawl",
     "brief": "深度网页阅读：提供具体的URL链接，抓取并读取该网页的完整长篇内容（转为Markdown格式）。"
+  },
+  {
+    "id": "es_agg_search",
+    "brief": "执行宏观数据统计与聚合。支持声量份额(sov)、趋势(trend)、渠道分布(channel)和情感(sentiment)等多维交叉统计。"
+  },
+  {
+    "id": "es_sample_search",
+    "brief": "微观聚类抽样。基于相似度指纹(finger)获取特定任务下传播声量最大的、不重复的首发新闻与评论长文本，用于大模型归因分析。"
   }
 ]
