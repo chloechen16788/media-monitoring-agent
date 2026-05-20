@@ -1,4 +1,5 @@
 import React from 'react';
+import { REPORT_SCHEMAS } from '../config/reportSchemas';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import styles from './MessageRenderer.module.css';
@@ -11,7 +12,7 @@ interface MessageRendererProps {
   sessionId: string;
 }
 
-export default function MessageRenderer({ content, onShowCitation, onOpenWorkspace, sessionId }: MessageRendererProps) {
+export default function MessageRenderer({ content, onShowCitation, onOpenWorkspace, onLockInput, sessionId }: MessageRendererProps) {
   const blockRegex = /<(think|tool_call|tool_result)>([\s\S]*?)<\/\1>/g;
   const workspaceRegex = /\[WORKSPACE_SCHEMA_START\]([\s\S]*?)\[WORKSPACE_SCHEMA_END\]/g;
   
@@ -25,163 +26,115 @@ export default function MessageRenderer({ content, onShowCitation, onOpenWorkspa
   // Remove workspace tags from rendered markdown
   processedContent = processedContent.replace(workspaceRegex, '');
 
+
   const [cardState, setCardState] = React.useState({ step: 1, isGenerating: false, progress: 0, finished: false });
 
-  // Multi-level Categories State
-  const [categories, setCategories] = React.useState([
-    {
-      id: 'cat_1',
-      name: '品牌',
-      tasks: [{ id: 't_bmw', name: '宝马 (本品)' }],
-      dimensions: [
-        { id: 'd_sov', name: '声量与SOV对比' }, 
-        { id: 'd_channel', name: '分渠道结构对比' }, 
-        { id: 'd_trend', name: '声量趋势对比' },
-        { id: 'd_sentiment', name: '情感与负面雷达' },
-        { id: 'source_topn', name: '核心声量阵地与KOL榜单' }
-      ]
-    },
-    {
-      id: 'cat_2',
-      name: '竞品 (对标分析)',
-      tasks: [{ id: 't_benz', name: '奔驰 (竞品)' }, { id: 't_audi', name: '奥迪 (竞品)' }],
-      dimensions: [
-        { id: 'd_sov', name: '声量与SOV对比' },
-        { id: 'trend_by_channel', name: '各渠道时序趋势交锋' },
-        { id: 'prn_distribution', name: '主动发稿与转载结构比' },
-        { id: 'effect_metrics', name: '预估触达阅读效果分析' }
-      ]
-    }
-  ]);
+  const [selectedSchemaKey, setSelectedSchemaKey] = React.useState('brand_monthly');
   const [dateRange, setDateRange] = React.useState('1w');
-
+  
   const availableTasks = [
     { id: 't_bmw', name: '宝马 (本品)' }, { id: 't_benz', name: '奔驰 (竞品)' }, { id: 't_audi', name: '奥迪 (竞品)' }, { id: 't_mini', name: 'MINI (子品牌)' }
   ];
-  const availableDimensions = [
-    { id: 'd_sov', name: '声量与SOV对比' }, 
-    { id: 'd_trend', name: '声量趋势对比' }, 
-    { id: 'd_channel', name: '分渠道结构对比' }, 
-    { id: 'd_sentiment', name: '情感与负面雷达' },
-    { id: 'trend_by_channel', name: '各渠道时序趋势交锋' },
-    { id: 'prn_distribution', name: '主动发稿与转载结构比' },
-    { id: 'source_topn', name: '核心声量阵地与KOL榜单' },
-    { id: 'sentiment_cluster_topn', name: 'AI 负面危机靶向预警' },
-    { id: 'effect_metrics', name: '预估触达阅读效果分析' }
-  ];
 
-  const handleAddTask = (catId: string, e: React.ChangeEvent<HTMLSelectElement>) => {
+  const schema = REPORT_SCHEMAS[selectedSchemaKey];
+  
+  // Default entity tasks
+  const [entityTasks, setEntityTasks] = React.useState<{ [entityKey: string]: { id: string; name: string }[] }>({
+    brand: [{ id: 't_bmw', name: '宝马 (本品)' }],
+    competitor: [{ id: 't_benz', name: '奔驰 (竞品)' }, { id: 't_audi', name: '奥迪 (竞品)' }],
+    product: [],
+    leader: []
+  });
+
+  const handleAddTask = (entityKey: string, e: React.ChangeEvent<HTMLSelectElement>) => {
     const taskId = e.target.value;
     if (!taskId) return;
     const task = availableTasks.find(t => t.id === taskId);
     if (!task) return;
 
-    setCategories(prev => prev.map(cat => {
-      if (cat.id === catId && !cat.tasks.find(t => t.id === taskId)) {
-        return { ...cat, tasks: [...cat.tasks, task] };
+    setEntityTasks(prev => {
+      const current = prev[entityKey] || [];
+      if (!current.find(t => t.id === taskId)) {
+        return { ...prev, [entityKey]: [...current, task] };
       }
-      return cat;
-    }));
-    e.target.value = ""; // Reset select
+      return prev;
+    });
+    e.target.value = ""; 
   };
 
-  const handleAddDimension = (catId: string, e: React.ChangeEvent<HTMLSelectElement>) => {
-    const dimId = e.target.value;
-    if (!dimId) return;
-    const dim = availableDimensions.find(d => d.id === dimId);
-    if (!dim) return;
-
-    setCategories(prev => prev.map(cat => {
-      if (cat.id === catId && !cat.dimensions.find(d => d.id === dimId)) {
-        return { ...cat, dimensions: [...cat.dimensions, dim] };
-      }
-      return cat;
-    }));
-    e.target.value = ""; // Reset select
-  };
-
-  const removeTask = (catId: string, taskId: string) => {
-    setCategories(prev => prev.map(cat => 
-      cat.id === catId ? { ...cat, tasks: cat.tasks.filter(t => t.id !== taskId) } : cat
-    ));
-  };
-
-  const removeDimension = (catId: string, dimId: string) => {
-    setCategories(prev => prev.map(cat => 
-      cat.id === catId ? { ...cat, dimensions: cat.dimensions.filter(d => d.id !== dimId) } : cat
-    ));
-  };
-
-  const addCategory = () => {
-    setCategories(prev => [...prev, {
-      id: `cat_${Date.now()}`,
-      name: '自定义分类',
-      tasks: [],
-      dimensions: []
-    }]);
+  const removeTask = (entityKey: string, taskId: string) => {
+    setEntityTasks(prev => {
+      const current = prev[entityKey] || [];
+      return { ...prev, [entityKey]: current.filter(t => t.id !== taskId) };
+    });
   };
 
   const handleGenerate = async () => {
     setCardState(prev => ({ ...prev, isGenerating: true, progress: 10 }));
     
     try {
-      // 模拟一点进度条，提升体验
       const progressInterval = setInterval(() => {
         setCardState(prev => ({ ...prev, progress: Math.min(prev.progress + 15, 80) }));
       }, 500);
 
-      // 解析日期范围
       let start_time = "2026-04-01 00:00:00";
       let end_time = "2026-04-30 23:59:59";
-      // 简单 Mock 时间，如果是真实情况可以根据 dateRange 计算
       if (dateRange === '1w') {
         start_time = "2026-04-24 00:00:00";
       }
 
+      // We still use mock data fetch
       const payload = {
         uid: "134209751",
         partition: "202604",
-        date_range: [start_time, end_time],
-        categories: categories
+        schema: selectedSchemaKey,
+        entityTasks,
+        start_time,
+        end_time
       };
 
-      const response = await fetch('http://localhost:3000/api/generate-report', {
+      const res = await fetch('http://localhost:3000/api/generate-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-
-      clearInterval(progressInterval);
-
-      if (!response.ok) {
-        throw new Error('Failed to generate report');
-      }
-
-      const result = await response.json();
-      setCardState(prev => ({ ...prev, progress: 100 }));
+      const result = await res.json();
       
-      setTimeout(async () => {
-        setCardState(prev => ({ ...prev, isGenerating: false, step: 3, finished: true }));
-        // 将真实数据传递给 RightSidebar
-        onOpenWorkspace?.({ reportType: 'multi_category', data: categories, dateRange, esData: result });
+      clearInterval(progressInterval);
+      setCardState(prev => ({ ...prev, isGenerating: false, progress: 100, step: 3, finished: true }));
+      
+      // Compute context slot IDs dynamically based on the schema
+      const slotsContext = Object.keys(schema.entities).map(entityKey => {
+        const entityTasksList = entityTasks[entityKey];
+        if (!entityTasksList || entityTasksList.length === 0) return null;
         
-        // 隐式将生成的报告上下文注入到底层大模型记忆中
+        const entityConfig = schema.entities[entityKey];
+        return entityConfig.applicable_charts.map((chart: any) => {
+          return `- ${entityConfig.description} - ${chart.chart_title}: <UPDATE_INSIGHT target="${entityKey}_${chart.sampling_key}">`;
+        }).join('\n');
+      }).filter(Boolean).join('\n');
+
+      setTimeout(async () => {
+        if (onLockInput) onLockInput(false);
+        // Pass dynamic config to RightSidebar
+        onOpenWorkspace?.({ reportType: 'dynamic_schema', schemaKey: selectedSchemaKey, entityTasks, dateRange, esData: result });
+        
         try {
-          const contextMsg = `[系统通知] 用户刚刚成功在右侧大屏生成了一份多维度分析报告。
-【报告配置】: 数据周期为 ${dateRange === '1w' ? '最近一周 (2026-04-24至2026-04-30)' : dateRange}。分析对象为 ${categories.map(c => c.name).join('、')}。
+          const contextMsg = `[系统通知] 用户刚刚成功在右侧大屏生成了一份基于 "${schema.report_name}" 的动态报告。
+【报告配置】: 数据周期为 ${dateRange === '1w' ? '最近一周 (2026-04-24至2026-04-30)' : dateRange}。
 【底层引擎配置】: UID为 "${payload.uid}", Partition为 "${payload.partition}"。
 
 【⚠️ 高阶操作指令 ⚠️】
-当用户要求“解读数据”、“分析波峰”、“查看详细数据”时，你**必须**使用 shell 工具调用底层的 Python 脚本获取真实数据。
-1. 首先使用 shell 工具执行 ["cat", "skills/catalog.json"] 查看可用技能。你只能使用这里面列出的技能（如 es_agg_search 或 es_sample_search），绝不要捏造其他脚本！
-2. 了解技能用法：执行 ["python", "skills/get_skill_doc.py", "es_agg_search"]。
-3. 执行技能获取数据，调用时务必在 JSON 参数中携带 "uid" 和 "partition"。例如执行 ["python", "skills/es_agg_search.py", "{\\"task_ids\\": [6860], \\"uid\\": \\"${payload.uid}\\", \\"partition\\": \\"${payload.partition}\\", \\"dimensions\\": [\\"trend\\"]}"]。
-4. **致命红线**：shell 工具的 command 参数**必须且只能**是字符串数组 (Array of strings)！绝对不能传入纯字符串！
+当用户要求获取数据或执行分析时，你**必须**使用 shell 工具调用底层 Python 脚本。
+1. 如果用户在对话中明确指定了某项技能（例如以 /advanced_chart_sampling 开头），你可以跳过查询目录的步骤，**直接**执行 ["python", "skills/get_skill_doc.py", "<该技能名>"] 来查阅其说明书。
+2. 如果用户未明确指定，请先执行 ["cat", "skills/catalog.json"] 查看有哪些可用技能，然后再使用 get_skill_doc.py 了解用法。绝对不要捏造不存在的脚本！
+3. 实际执行技能获取数据时，务必在 JSON 参数中携带 "uid" 和 "partition"。
 
 【✨ 大屏动态注入指令 (Generative UI) ✨】
-当用户要求“把分析结果加到报告里”或“更新大屏趋势图的解读”时，你可以直接通过魔法指令远程重写右侧图表下方的文字！
-- 右侧大屏可被更新的图表 ID 对应关系为：趋势图叫 'd_trend'，渠道图叫 'd_channel'，各渠道时序交锋图叫 'trend_by_channel'。
-- 你必须在对话回复的末尾输出以下代码块来实现内容覆盖：
+右侧大屏已根据动态 Schema 渲染完毕。当前大屏支持的动态洞察插槽如下：
+${slotsContext}
+
+你必须在对话回复的末尾输出以下代码块来实现内容覆盖（注意替换图表ID）：
 <UPDATE_INSIGHT target="图表ID">
 这里写你要更新到右侧大屏的深度洞察内容...
 </UPDATE_INSIGHT>
@@ -192,20 +145,12 @@ export default function MessageRenderer({ content, onShowCitation, onOpenWorkspa
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               message: [
-                {
-                  role: 'user',
-                  content: contextMsg
-                },
-                {
-                  role: 'assistant',
-                  content: '[隐藏回复] 收到，我已经了解了最新生成的报告配置上下文。我将在后续回答中参考这些数据。'
-                }
+                { role: 'user', content: contextMsg },
+                { role: 'assistant', content: '[隐藏回复] 收到，我已经了解了动态报告的插槽结构和底层配置上下文。我将在后续回答中精准投射数据。' }
               ]
             })
           });
-        } catch(e) {
-          console.error("Failed to inject context", e);
-        }
+        } catch(e) { console.error("Failed to inject context", e); }
       }, 500);
 
     } catch (e) {
@@ -227,74 +172,50 @@ export default function MessageRenderer({ content, onShowCitation, onOpenWorkspa
             <select value={dateRange} onChange={e => setDateRange(e.target.value)}>
               <option value="1w">最近一周</option>
               <option value="1m">最近一个月</option>
-              <option value="3m">最近一季度</option>
-              <option value="1y">最近一年</option>
-              <option value="custom">自定义范围...</option>
             </select>
           </div>
         </div>
         
         {cardState.step === 1 && !cardState.isGenerating && (
           <div className={styles.cardBody}>
-            {categories.map((cat, idx) => (
-              <div key={cat.id} className={styles.categoryBlock}>
-                <div className={styles.categoryHeader}>
-                  <i className="ri-folder-2-fill"></i> 
-                  <input 
-                    type="text" 
-                    value={cat.name} 
-                    onChange={e => {
-                      const newName = e.target.value;
-                      setCategories(prev => prev.map(c => c.id === cat.id ? {...c, name: newName} : c));
-                    }}
-                    className={styles.categoryTitleInput} 
-                  />
-                  {idx > 0 && (
-                    <i className={`ri-delete-bin-line ${styles.deleteCatBtn}`} onClick={() => {
-                      setCategories(prev => prev.filter(c => c.id !== cat.id));
-                    }}></i>
-                  )}
-                </div>
+            <div className={styles.tagSection}>
+              <div className={styles.tagLabel}>报告模板：</div>
+              <select value={selectedSchemaKey} onChange={e => setSelectedSchemaKey(e.target.value)} className={styles.categoryTitleInput} style={{marginBottom: 10, padding: 8}}>
+                {Object.keys(REPORT_SCHEMAS).map(k => (
+                  <option key={k} value={k}>{REPORT_SCHEMAS[k].report_name}</option>
+                ))}
+              </select>
+            </div>
 
-                <div className={styles.tagSection}>
-                  <div className={styles.tagLabel}>分析任务：</div>
-                  <div className={styles.pillContainer}>
-                    {cat.tasks.map(t => (
-                      <span key={t.id} className={styles.pillTag}>
-                        {t.name} <i className="ri-close-line" onClick={() => removeTask(cat.id, t.id)}></i>
-                      </span>
-                    ))}
-                    <select className={styles.addSelect} onChange={(e) => handleAddTask(cat.id, e)} defaultValue="">
-                      <option value="" disabled>+ 添加任务</option>
-                      {availableTasks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                <div className={styles.tagSection}>
-                  <div className={styles.tagLabel}>图表维度：</div>
-                  <div className={styles.pillContainer}>
-                    {cat.dimensions.map(d => (
-                      <span key={d.id} className={`${styles.pillTag} ${styles.dimTag}`}>
-                        <i className="ri-bar-chart-fill"></i> {d.name} <i className="ri-close-line" onClick={() => removeDimension(cat.id, d.id)}></i>
-                      </span>
-                    ))}
-                    <select className={styles.addSelect} onChange={(e) => handleAddDimension(cat.id, e)} defaultValue="">
-                      <option value="" disabled>+ 添加维度</option>
-                      {availableDimensions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                    </select>
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            <button className={styles.addCategoryBtn} onClick={addCategory}>
-              <i className="ri-add-circle-line"></i> 添加分析对象分类
-            </button>
+            {Object.keys(schema.entities).map(entityKey => {
+               const entityConfig = schema.entities[entityKey];
+               const currentTasks = entityTasks[entityKey] || [];
+               return (
+                 <div key={entityKey} className={styles.categoryBlock}>
+                   <div className={styles.categoryHeader}>
+                     <i className="ri-folder-2-fill"></i> {entityConfig.description} ({entityKey})
+                   </div>
+                   <div className={styles.tagSection}>
+                     <div className={styles.tagLabel}>分配分析任务：</div>
+                     <div className={styles.pillContainer}>
+                       {currentTasks.map(t => (
+                         <span key={t.id} className={styles.pillTag}>
+                           {t.name} <i className="ri-close-line" onClick={() => removeTask(entityKey, t.id)}></i>
+                         </span>
+                       ))}
+                       <select className={styles.addSelect} onChange={(e) => handleAddTask(entityKey, e)} defaultValue="">
+                         <option value="" disabled>+ 添加任务</option>
+                         {availableTasks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                       </select>
+                     </div>
+                   </div>
+                 </div>
+               );
+            })}
 
             <div className={styles.cardFooter}>
               <button className={styles.cancelBtn} onClick={() => setCardState(p => ({...p, finished: true}))}>取消</button>
-              <button className={styles.confirmBtn} onClick={handleGenerate}>开始生成大盘报告</button>
+              <button className={styles.confirmBtn} onClick={handleGenerate}>一键生成标准大屏</button>
             </div>
           </div>
         )}
@@ -310,7 +231,7 @@ export default function MessageRenderer({ content, onShowCitation, onOpenWorkspa
           <div 
             className={`${styles.cardBody} ${styles.finishedCardBody}`} 
             style={{textAlign: 'center', color: '#52c41a'}}
-            onClick={() => onOpenWorkspace?.({ reportType: 'multi_category', data: categories })}
+            onClick={() => onOpenWorkspace?.({ reportType: 'dynamic_schema', schemaKey: selectedSchemaKey, entityTasks, dateRange, esData: null })}
           >
             <i className="ri-checkbox-circle-fill" style={{fontSize: 24}}></i> 报告已生成，点击此处可随时重新查看报告画布。
           </div>
@@ -318,6 +239,7 @@ export default function MessageRenderer({ content, onShowCitation, onOpenWorkspa
       </div>
     );
   };
+
 
   const blocks = [];
   let lastIndex = 0;

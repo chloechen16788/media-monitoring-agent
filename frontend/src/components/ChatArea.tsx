@@ -11,10 +11,27 @@ interface ChatAreaProps {
 }
 
 interface Message {
-  id: string;
-  role: 'user' | 'assistant' | 'tool';
+  role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
 }
+
+const SKILLS = [
+  { id: "generate_report", brief: "🚀 快速创建一份全景数据分析报告，呼出大屏图表配置面板。" },
+  { id: "es_agg_search", brief: "执行宏观数据统计与聚合。支持声量份额(sov)、趋势(trend)等统计。" },
+  { id: "es_sample_search", brief: "微观聚类抽样。基于相似度指纹获取特定任务下长文本，用于归因分析。" },
+  { id: "query_reimbursement_policy", brief: "查询公司内部的差旅、打车、餐饮等报销制度和规定。" },
+  { id: "check_reimbursement_progress", brief: "查询某位员工当前报销单的审批进度状态。" },
+  { id: "send_feishu_message", brief: "向指定员工、部门负责人或主管发送一条飞书消息或提醒。" },
+  { id: "web_search", brief: "浅度联网搜索：查询互联网上的实时信息、新闻、百科等外部客观事实。" },
+  { id: "deep_web_crawl", brief: "深度网页阅读：提供具体的URL链接，抓取并读取完整长篇内容。" },
+  { id: "advanced_chart_sampling", brief: "高级图表抽样规范指南：包含 9 种图表的标准抽样逻辑与 JSON 输出契约说明书。" }
+];
+
+const NATIVE_TOOLS = [
+  { id: "shell", brief: "执行宿主环境的 Bash/Python 脚本命令" },
+  { id: "read_url", brief: "快速抓取并读取静态 URL 原始内容" },
+  { id: "view_file", brief: "只读模式预览本地工作区文件" }
+];
 
 export default function ChatArea({ userId, currentSessionId, onShowCitation, onOpenWorkspace, onUpdateInsight }: ChatAreaProps) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -93,7 +110,7 @@ export default function ChatArea({ userId, currentSessionId, onShowCitation, onO
     if (!onUpdateInsight) return;
     const lastMsg = messages[messages.length - 1];
     if (lastMsg && lastMsg.role === 'assistant') {
-      const regex = /<UPDATE_INSIGHT target="([^"]+)">([\s\S]*?)(?:<\/UPDATE_INSIGHT>|$)/g;
+      const regex = /<\s*UPDATE_INSIGHT\s+target=['"]([^'"]+)['"]\s*>([\s\S]*?)(?:<\/\s*UPDATE_INSIGHT\s*>|$)/gi;
       let match;
       while ((match = regex.exec(lastMsg.content)) !== null) {
         onUpdateInsight(match[1], match[2]);
@@ -135,7 +152,7 @@ export default function ChatArea({ userId, currentSessionId, onShowCitation, onO
     setMessages(prev => [...prev, { id: assistantMsgId, role: 'assistant', content: '' }]);
 
     // ==== MOCK INTERCEPTOR ====
-    if (promptText.includes('分析') || promptText.includes('报告') || promptText.includes('月报') || promptText.includes('监测')) {
+    if (!promptText.startsWith('/') && (promptText.includes('分析') || promptText.includes('报告') || promptText.includes('月报') || promptText.includes('监测'))) {
       setTimeout(() => {
         setMessages(prev => prev.map(m => 
           m.id === assistantMsgId 
@@ -281,7 +298,7 @@ export default function ChatArea({ userId, currentSessionId, onShowCitation, onO
                 </div>
                 <div className={styles.messageContent}>
                   <MessageRenderer 
-                    content={msg.content.replace(/<UPDATE_INSIGHT target="[^"]+">[\s\S]*?(?:<\/UPDATE_INSIGHT>|$)/g, '\n\n*[✨ 正在将深度洞察投射至右侧大屏...]*\n\n')} 
+                    content={msg.content.replace(/<\s*UPDATE_INSIGHT\s+target=['"][^'"]+['"]\s*>([\s\S]*?)(?:<\/\s*UPDATE_INSIGHT\s*>|$)/gi, '\n\n*[✨ 正在将深度洞察投射至右侧大屏...]*\n\n')} 
                     onShowCitation={onShowCitation} 
                     onOpenWorkspace={onOpenWorkspace} 
                     onLockInput={setIsInputLocked}
@@ -293,7 +310,37 @@ export default function ChatArea({ userId, currentSessionId, onShowCitation, onO
             <div ref={messagesEndRef} />
           </div>
 
-          <div className={styles.inputContainer}>
+          <div className={styles.inputContainer} style={{ position: 'relative' }}>
+            {/* Slash Command Autocomplete Menu */}
+            {input.startsWith('/') && !input.includes(' ') && (
+              <div className={styles.slashMenu}>
+                {SKILLS.filter(s => s.id.toLowerCase().includes(input.slice(1).toLowerCase()) || s.brief.includes(input.slice(1).toLowerCase())).map(skill => (
+                  <button 
+                    key={skill.id}
+                    className={styles.dropdownItem}
+                    onClick={() => {
+                      const hasReportConfig = messages.some(m => m.content.includes('[WORKSPACE_SCHEMA_START]'));
+                      const needsReport = ['es_agg_search', 'es_sample_search', 'advanced_chart_sampling'];
+                      if (skill.id === 'generate_report' || (needsReport.includes(skill.id) && !hasReportConfig)) {
+                        setInput('我想生成一份全景分析报告，请提供高级报告配置面板。');
+                      } else if (skill.id === 'advanced_chart_sampling') {
+                        setInput(`/${skill.id} 帮我按规范抽样分析一下大屏图表：`);
+                      } else {
+                        setInput(`/${skill.id} `);
+                      }
+                      textareaRef.current?.focus();
+                    }}
+                  >
+                    <span>/ {skill.id}</span>
+                    <small>{skill.brief}</small>
+                  </button>
+                ))}
+                {SKILLS.filter(s => s.id.toLowerCase().includes(input.slice(1).toLowerCase()) || s.brief.includes(input.slice(1).toLowerCase())).length === 0 && (
+                  <div className={styles.slashMenuEmpty}>无匹配的 Skills...</div>
+                )}
+              </div>
+            )}
+            
             <div className={`${styles.inputBox} ${isInputLocked ? styles.locked : ''}`}>
               {attachedFilePath && (
                 <div className={styles.attachmentBadge}>
@@ -325,8 +372,51 @@ export default function ChatArea({ userId, currentSessionId, onShowCitation, onO
                   <button onClick={() => fileInputRef.current?.click()} title="添加附件" disabled={isInputLocked}>
                     <i className="ri-attachment-line"></i>
                   </button>
-                  <button disabled={isInputLocked}><i className="ri-lightbulb-flash-line"></i> 思考</button>
-                  <button disabled={isInputLocked}><i className="ri-tools-line"></i> 工具</button>
+                  
+                  {/* Skills Dropdown */}
+                  <div className={styles.dropdownContainer}>
+                    <button disabled={isInputLocked} type="button"><i className="ri-book-read-line"></i> Skills</button>
+                    <div className={styles.dropdown}>
+                      <div className={styles.dropdownContent}>
+                        {SKILLS.map(skill => (
+                          <button 
+                            key={skill.id}
+                            className={styles.dropdownItem}
+                            onClick={() => {
+                              const hasReportConfig = messages.some(m => m.content.includes('[WORKSPACE_SCHEMA_START]'));
+                              const needsReport = ['es_agg_search', 'es_sample_search', 'advanced_chart_sampling'];
+                              if (skill.id === 'generate_report' || (needsReport.includes(skill.id) && !hasReportConfig)) {
+                                setInput('我想生成一份全景分析报告，请提供高级报告配置面板。');
+                              } else if (skill.id === 'advanced_chart_sampling') {
+                                setInput(`/${skill.id} 帮我按规范抽样分析一下大屏图表：`);
+                              } else {
+                                setInput(`/${skill.id} `);
+                              }
+                              textareaRef.current?.focus();
+                            }}
+                          >
+                            <span>/ {skill.id}</span>
+                            <small>{skill.brief}</small>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Tools Dropdown */}
+                  <div className={styles.dropdownContainer}>
+                    <button disabled={isInputLocked} type="button"><i className="ri-tools-line"></i> 工具</button>
+                    <div className={styles.dropdown}>
+                      <div className={styles.dropdownContent}>
+                        {NATIVE_TOOLS.map(tool => (
+                          <div key={tool.id} className={styles.dropdownItem} style={{cursor: 'default'}}>
+                            <span><i className="ri-terminal-box-line"></i> {tool.id}</span>
+                            <small>{tool.brief}</small>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 <div className={styles.rightActions}>
                   <button 

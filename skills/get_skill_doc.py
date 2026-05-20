@@ -64,7 +64,14 @@ if __name__ == "__main__":
         sys.exit(1)
         
     skill_id = sys.argv[1]
-    if skill_id in DOCS:
+    if skill_id == "advanced_chart_sampling":
+        schema_path = os.path.join(os.path.dirname(__file__), "chart_sampling_schema.md")
+        if os.path.exists(schema_path):
+            with open(schema_path, 'r', encoding='utf-8') as f:
+                print(f.read())
+        else:
+            print("错误: 找不到 chart_sampling_schema.md 文件。")
+    elif skill_id in DOCS:
         print(DOCS[skill_id])
     else:
         print(f"错误: 找不到技能 '{skill_id}'。请查阅 catalog.json 获取正确的技能ID。")

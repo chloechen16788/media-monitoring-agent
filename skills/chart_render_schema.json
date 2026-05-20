@@ -1,0 +1,206 @@
+{
+  "dataSources": {
+    "sov": {
+      "type": "terms",
+      "field": "taskId",
+      "groupByTask": false
+    },
+    "trend": {
+      "type": "date_histogram",
+      "field": "messageTime",
+      "groupByTask": true,
+      "dsl": {
+        "date_histogram": {
+          "field": "messageTime",
+          "calendar_interval": "day",
+          "format": "yyyy-MM-dd"
+        }
+      }
+    },
+    "channel": {
+      "type": "terms",
+      "field": "dataChannel",
+      "groupByTask": true,
+      "dsl": {
+        "terms": {
+          "field": "dataChannel",
+          "size": 15
+        }
+      }
+    },
+    "sentiment": {
+      "type": "terms",
+      "field": "sentiment",
+      "groupByTask": true,
+      "dsl": {
+        "terms": {
+          "field": "sentiment",
+          "size": 5
+        }
+      }
+    },
+    "sources": {
+      "type": "terms",
+      "field": "authorName",
+      "groupByTask": true,
+      "dsl": {
+        "terms": {
+          "field": "authorName",
+          "size": 10
+        }
+      }
+    }
+  },
+  "charts": {
+    "trend_peak_events": {
+      "chartType": "line",
+      "dataSourceField": "trend",
+      "mapping": {
+        "nameKey": "key",
+        "valueKey": "doc_count"
+      },
+      "styleOption": {
+        "tooltip": {
+          "trigger": "axis"
+        },
+        "yAxis": {
+          "type": "value"
+        },
+        "seriesParams": {
+          "smooth": true
+        }
+      }
+    },
+    "trend_by_media_type": {
+      "chartType": "line",
+      "dataSourceField": "trend",
+      "mapping": {
+        "nameKey": "key",
+        "valueKey": "doc_count"
+      },
+      "styleOption": {
+        "tooltip": {
+          "trigger": "axis"
+        },
+        "yAxis": {
+          "type": "value"
+        },
+        "seriesParams": {
+          "smooth": true
+        }
+      }
+    },
+    "sentiment_cluster_topn": {
+      "chartType": "pie",
+      "dataSourceField": "sentiment",
+      "mapping": {
+        "nameKey": "key",
+        "valueKey": "doc_count"
+      },
+      "styleOption": {
+        "tooltip": {
+          "trigger": "item"
+        },
+        "seriesParams": {
+          "radius": "50%"
+        }
+      }
+    },
+    "source_topn": {
+      "chartType": "bar",
+      "dataSourceField": "sources",
+      "mapping": {
+        "nameKey": "key",
+        "valueKey": "doc_count"
+      },
+      "styleOption": {
+        "tooltip": {
+          "trigger": "axis",
+          "axisPointer": {
+            "type": "shadow"
+          }
+        },
+        "xAxis": {
+          "type": "value"
+        },
+        "seriesParams": {
+          "itemStyle": {
+            "color": "#722ed1"
+          }
+        },
+        "isCategoryY": true
+      }
+    },
+    "leader_top_posts": {
+      "chartType": "bar",
+      "dataSourceField": "sources",
+      "mapping": {
+        "nameKey": "key",
+        "valueKey": "doc_count"
+      },
+      "styleOption": {
+        "tooltip": {
+          "trigger": "axis",
+          "axisPointer": {
+            "type": "shadow"
+          }
+        },
+        "xAxis": {
+          "type": "value"
+        },
+        "seriesParams": {
+          "itemStyle": {
+            "color": "#722ed1"
+          }
+        },
+        "isCategoryY": true
+      }
+    },
+    "dimension_topn": {
+      "chartType": "bar",
+      "dataSourceField": "channel",
+      "mapping": {
+        "nameKey": "key",
+        "valueKey": "doc_count"
+      },
+      "styleOption": {
+        "tooltip": {
+          "trigger": "axis",
+          "axisPointer": {
+            "type": "shadow"
+          }
+        },
+        "xAxis": {
+          "type": "value"
+        },
+        "seriesParams": {
+          "itemStyle": {
+            "color": "#1890ff"
+          }
+        },
+        "isCategoryY": true
+      }
+    },
+    "summary_top_risks": {
+      "chartType": "bar",
+      "dataSourceField": "trend",
+      "mapping": {
+        "nameKey": "key",
+        "valueKey": "doc_count"
+      },
+      "styleOption": {
+        "tooltip": {
+          "trigger": "axis"
+        },
+        "yAxis": {
+          "type": "value"
+        },
+        "seriesParams": {
+          "itemStyle": {
+            "color": "#13c2c2"
+          }
+        }
+      }
+    }
+  }
+}

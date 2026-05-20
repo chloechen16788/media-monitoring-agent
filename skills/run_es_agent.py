@@ -17,22 +17,32 @@ def main():
         uid = params.get("uid", "134209751")
         partition = params.get("partition", "202604")
         date_range = params.get("date_range", ["2026-04-01 00:00:00", "2026-04-30 23:59:59"])
+
         categories = params.get("categories", [])
+        entityTasks = params.get("entityTasks", {})
         
-        # We will collect all tasks from categories to do a unified query
+        # We will collect all tasks from categories or entityTasks to do a unified query
         all_task_ids = set()
-        all_dimensions = set(["sov", "trend", "channel", "sentiment", "sources", "effect_metrics", "trend_by_channel", "prn_distribution"]) # Removed entities to improve performance
+        all_dimensions = set(["sov", "trend", "channel", "sentiment", "sources", "effect_metrics", "trend_by_channel", "prn_distribution"])
         
+        # Backward compatibility for old categories format
         for cat in categories:
             for t in cat.get("tasks", []):
-                # t is something like {id: 't_bmw', name: '宝马 (本品)'}
-                # But in ES we need integer taskId. We'll hardcode a mapping or fallback to 6860
-                task_id_int = 6860 # Fallback default
+                task_id_int = 6860
                 if t.get("id") == "t_bmw": task_id_int = 6860
                 elif t.get("id") == "t_benz": task_id_int = 6861
                 elif t.get("id") == "t_audi": task_id_int = 6862
                 all_task_ids.add(task_id_int)
-        
+                
+        # New entityTasks format
+        for entity_key, tasks in entityTasks.items():
+            for t in tasks:
+                task_id_int = 6860
+                if t.get("id") == "t_bmw": task_id_int = 6860
+                elif t.get("id") == "t_benz": task_id_int = 6861
+                elif t.get("id") == "t_audi": task_id_int = 6862
+                all_task_ids.add(task_id_int)
+
         if not all_task_ids:
             all_task_ids = {6860}
             
