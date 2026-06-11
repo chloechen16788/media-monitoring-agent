@@ -41,7 +41,7 @@
   },
   {
     "id": "render_line_chart",
-    "brief": "将时间序列数据渲染为 ECharts 折线图配置：横轴时间、纵轴数量加总，含主题样式与峰值标注，并返回 Top3 峰值日期供抽样归因。"
+    "brief": "将时间序列数据渲染为 ECharts 折线图配置：支持单线与多指标多线（series_field），含主题样式与峰值标注，并返回峰值供抽样归因。"
   },
   {
     "id": "line_chart_analysis",

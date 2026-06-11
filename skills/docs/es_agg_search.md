@@ -6,5 +6,10 @@
   - task_ids (必需): 品牌/任务的ID列表，例如 [6860] (Manus), [6861] (OpenAI), [6862] (Anthropic), [6863] (Google)。
   - start_time (必需): 开始时间，如 "2026-04-24 00:00:00"
   - end_time (必需): 结束时间，如 "2026-04-30 23:59:59"
-  - dimensions (必需): 字符串数组，可填 ["sov", "trend", "channel", "sentiment", "source", "effect_agg"]，获取所需的维度数据。
+  - dimensions (必需): 字符串数组，可填 ["sov", "trend", "channel", "sentiment", "sources", "effect_metrics", "trend_by_channel", "trend_by_sentiment", "prn_distribution"]，获取所需维度数据。
+  - sentiment_filter (可选): 情感过滤数组，如 [-1]（仅负面）、[0,1]（仅正+中）。适用于所有维度，常用于“负面趋势线”场景。
 【返回格式】: JSON 格式的数据统计结果。
+
+【新增维度说明】:
+  - trend_by_sentiment: 返回按天聚合、再按情感拆分的趋势结果。可直接用于绘制“正/中/负三条线”。
+  - trend_by_channel: 返回按天聚合、再按渠道拆分的趋势结果（日期格式统一为 "yyyy-MM-dd"，便于与其他 trend 结果直接对齐）。

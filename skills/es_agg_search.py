@@ -57,9 +57,10 @@ def execute(params: dict) -> str:
     - task_ids: list[int] - 要分析的任务 ID 列表 (对应 ES 的 taskId 字段)
     - start_time: str - 开始时间 (YYYY-MM-DD HH:MM:SS)
     - end_time: str - 结束时间 (YYYY-MM-DD HH:MM:SS)
-    - dimensions: list[str] - 需统计的维度。支持: "sov", "trend", "channel", "sentiment", "sources", "effect_metrics", "trend_by_channel", "prn_distribution"
+    - dimensions: list[str] - 需统计的维度。支持: "sov", "trend", "channel", "sentiment", "sources", "effect_metrics", "trend_by_channel", "trend_by_sentiment", "prn_distribution"
     - uid: str/int - 用户 ID
     - partition: str - 索引分区月份 (e.g. "202604")
+    - sentiment_filter: list[int] - 可选，情感过滤。如 [-1] 只统计负面
     """
     uid = params.get("uid", "134209751")
 
@@ -67,6 +68,7 @@ def execute(params: dict) -> str:
     start_time = params.get("start_time")
     end_time = params.get("end_time")
     dimensions = params.get("dimensions", ["sov"])
+    sentiment_filter = params.get("sentiment_filter")
     
     if not task_ids or not start_time or not end_time:
         return json.dumps({"error": "缺少必要的参数: task_ids, start_time, end_time"})
@@ -90,6 +92,12 @@ def execute(params: dict) -> str:
                 }
             }}
         ]
+        if sentiment_filter is not None:
+            if not isinstance(sentiment_filter, list) or len(sentiment_filter) == 0:
+                return json.dumps({"error": "sentiment_filter 必须是非空数组，例如 [-1] 或 [0, 1]"})
+            if not all(isinstance(s, (int, float)) for s in sentiment_filter):
+                return json.dumps({"error": "sentiment_filter 仅支持数字元素（-1/0/1）"})
+            must_filters.append({"terms": {"sentiment": [int(s) for s in sentiment_filter]}})
         
         aggs = {}
         
@@ -185,10 +193,28 @@ def execute(params: dict) -> str:
                         "date_histogram": {
                             "field": "messageTime",
                             "calendar_interval": "day",
-                            "format": "MM-dd"
+                            "format": "yyyy-MM-dd"
                         },
                         "aggs": {
                             "by_channel": {"terms": {"field": "dataChannel", "size": 5}}
+                        }
+                    }
+                }
+            }
+
+        # 10. 情感趋势（按天 x 情感）
+        if "trend_by_sentiment" in dimensions:
+            aggs["trend_sentiment_agg"] = {
+                "terms": {"field": "taskId", "size": len(task_ids)},
+                "aggs": {
+                    "daily_trend": {
+                        "date_histogram": {
+                            "field": "messageTime",
+                            "calendar_interval": "day",
+                            "format": "yyyy-MM-dd"
+                        },
+                        "aggs": {
+                            "by_sentiment": {"terms": {"field": "sentiment", "size": 3}}
                         }
                     }
                 }
@@ -274,6 +300,24 @@ def execute(params: dict) -> str:
                     days.append({"date": d["key_as_string"], "channels": ch_items})
                 trend_ch_data[tid] = days
             result["aggs"]["trend_by_channel"] = trend_ch_data
+
+        if "trend_sentiment_agg" in es_aggs:
+            trend_sent_data = {}
+            for t_bucket in es_aggs["trend_sentiment_agg"].get("buckets", []):
+                tid = t_bucket["key"]
+                days = []
+                for d in t_bucket.get("daily_trend", {}).get("buckets", []):
+                    sent_items = []
+                    for s in d.get("by_sentiment", {}).get("buckets", []):
+                        s_id = s["key"]
+                        sent_items.append({
+                            "sentiment_id": s_id,
+                            "sentiment_name": SENTIMENT_MAP.get(s_id, f"未知情感({s_id})"),
+                            "doc_count": s["doc_count"],
+                        })
+                    days.append({"date": d["key_as_string"], "sentiments": sent_items})
+                trend_sent_data[tid] = days
+            result["aggs"]["trend_by_sentiment"] = trend_sent_data
             
         if "sources_agg" in es_aggs:
             source_data = {}

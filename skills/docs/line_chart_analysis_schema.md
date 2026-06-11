@@ -14,10 +14,18 @@
 折线图输入数据**至少需要"时间 + 一个可统计字段"**（舆情数据通常包含发布时间、来源、作者、标题、摘要、链接，其中发布时间即时间字段，记录条数即可统计量）。
 
 - 上下文中已有满足条件的数据 → 直接进入 Step 2。
-- 数据不全或没有数据 → 先调用 ES 取数（趋势维度）：
+- 数据不全或没有数据 → 先调用 ES 取数（趋势维度）。按用户目标选择维度：
+  - 单线总声量：`["trend"]`
+  - 负面趋势线：`["trend"] + sentiment_filter: [-1]` 或 `["trend_by_sentiment"]` 后只取负面系列
+  - 正中负三线：`["trend_by_sentiment"]`
+  - 按来源类型多线：`["trend_by_channel"]`
 
 ```text
 python skills/es_agg_search.py "{\"uid\": \"<系统通知提供>\", \"task_ids\": [6860], \"start_time\": \"2026-05-01 00:00:00\", \"end_time\": \"2026-05-31 23:59:59\", \"dimensions\": [\"trend\"]}"
+```
+
+```text
+python skills/es_agg_search.py "{\"uid\": \"<系统通知提供>\", \"task_ids\": [6860], \"start_time\": \"2026-05-01 00:00:00\", \"end_time\": \"2026-05-31 23:59:59\", \"dimensions\": [\"trend_by_sentiment\"]}"
 ```
 
 - 若缺少 uid / task_ids / 时间范围，**停止执行并输出 `PARAM_REQUEST` 魔法码请求补参**，禁止编造。推荐字段：
@@ -31,6 +39,7 @@ python skills/es_agg_search.py "{\"uid\": \"<系统通知提供>\", \"task_ids\"
 把 Step 1 的趋势结果（或用户提供的原始记录）整理为 render_line_chart 的入参格式：
 
 - 趋势统计结果 → `[{"time": "2026-04-01", "value": 123}, ...]`，调用时传 `value_field: "value"`。
+- 情感/渠道趋势（嵌套聚合）→ 先扁平化为多线输入：`[{"time":"2026-04-01","value":123,"series":"负面"}, {"time":"2026-04-01","value":233,"series":"正面"}]`，并在渲染时传 `series_field: "series"`。
 - 逐条舆情记录 → 直接传原始数组，指定 `time_field` 为发布时间字段名，不传 `value_field`（按条数计数）。
 
 ## Step 3: 渲染折线图
@@ -39,17 +48,26 @@ python skills/es_agg_search.py "{\"uid\": \"<系统通知提供>\", \"task_ids\"
 python skills/executor/render_line_chart.py "{\"data\": [...], \"value_field\": \"value\", \"title\": \"XX声量趋势\", \"theme\": \"default\"}"
 ```
 
+- 多线模式示例（正中负三线）：
+```text
+python skills/executor/render_line_chart.py "{\"data\": [...], \"value_field\": \"value\", \"series_field\": \"series\", \"peak_series\": \"负面\", \"title\": \"XX情感趋势\", \"theme\": \"default\"}"
+```
+
 - 样式切换：仅通过 `theme` 参数（"default" 亮色 / "dark" 深色大屏），不要试图自行拼接 ECharts 样式。
-- 返回的 `data.chart_block` 是给前端的完整渲染魔法码整串（Step 5 直接原样复制）；`data.peaks` 是按数值降序的峰值点（默认 3 个），**这是 Step 4 的输入**。
+- 返回的 `data.chart_block` 是给前端的完整渲染魔法码整串（Step 5 直接原样复制）；`data.peaks` 是 Step 4 的输入：
+  - 单线模式：峰值数组 `[{"time","value"}]`
+  - 多线模式：分组对象 `{"系列名":[{"time","value"}]}`，优先使用 `peak_series` 指定系列进行抽样归因
 - 若返回 `ok: false`，按 `hint` 提示处理（通常是回到 Step 1 取数），禁止伪造数据。
 
 ## Step 4: 峰值抽样归因（top10 finger）
 
-对 `peaks` 中的每个高点日期，**分别发起一条独立命令**抽取该日 Top10 去重（finger 指纹）热门文章。例如 3 个峰值就是 3 条命令：
+对 `peaks` 中选定系列的每个高点日期，**分别发起一条独立命令**抽取该日 Top10 去重（finger 指纹）热门文章。例如 3 个峰值就是 3 条命令：
 
 ```text
 python skills/es_sample_search.py "{\"uid\": \"<同上>\", \"partition\": \"<同上>\", \"task_ids\": [6860], \"start_time\": \"2026-04-12 00:00:00\", \"end_time\": \"2026-04-12 23:59:59\", \"size\": 10}"
 ```
+
+- 只做负面归因时，抽样可附加 `sentiment_filter: [-1]`，避免混入非负面样本。
 
 ## Step 5: 总结输出
 

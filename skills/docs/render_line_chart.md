@@ -4,11 +4,16 @@
   - data (必需): 对象数组，每条记录至少包含一个时间字段。可以是逐条舆情记录（含发布时间/来源/作者/标题/摘要/链接），也可以是已聚合的趋势点。数据不全或为空时本技能会返回结构化错误并提示先取数。
   - time_field: 时间字段名，默认 "time"。支持 "YYYY-MM-DD"、"YYYY-MM-DD HH:MM:SS"、"YYYY/MM/DD" 等常见格式，无法解析的记录会被跳过并计入 dropped_records。
   - value_field: 可选。数值字段名，按该字段在每个时间桶内求和；不传则按记录条数计数（即"一共有多少条数据"）。
+  - series_field: 可选。多指标拆线字段名（例如 "series"）。传入后会按该字段生成多条折线并共享同一张图；不传则保持单线模式。
+  - peak_series: 可选。指定要打峰值标注（markPoint）的系列名。多线模式不传时默认第一条系列。
   - granularity: 时间聚合粒度，"hour" | "day" | "month"，默认 "day"。
   - title: 图表标题，默认 "时间趋势折线图"。
   - theme: 样式主题，"default"（亮色）| "dark"（深色大屏），默认 "default"。新增主题须在脚本 THEMES 字典中登记预设并同步更新本说明书，调用接口不变。
   - top_peaks: 返回的峰值数量，默认 3。
 【返回格式】: JSON。成功: {"ok": true, "data": {"chart_block", "peaks", "stats", ...}}；失败: {"ok": false, "error", "hint"}。
   - chart_block: 完整的前端渲染魔法码整串（以 CHART_OPTION_START 标记开头、CHART_OPTION_END 标记结尾）。**必须把这一整串原样复制到你的回复正文中**，前端会自动渲染折线图。严禁手抄/重排/美化其中的 JSON——任何改写都可能引入语法错误导致渲染失败。
-  - peaks: 按数值降序的峰值点数组 [{"time", "value"}]，用于驱动 es_sample_search 峰值日期抽样。
+  - peaks: 单线模式为峰值数组 [{"time", "value"}]；多线模式为按系列分组对象 {"系列名": [{"time", "value"}]}。
   - stats: {points, total, max, min, dropped_records} 统计摘要。
+
+【多线示例】:
+python skills/executor/render_line_chart.py "{\"data\":[{\"time\":\"2026-05-01\",\"value\":120,\"series\":\"总声量\"},{\"time\":\"2026-05-01\",\"value\":30,\"series\":\"负面\"},{\"time\":\"2026-05-01\",\"value\":45,\"series\":\"中性\"},{\"time\":\"2026-05-01\",\"value\":45,\"series\":\"正面\"}],\"time_field\":\"time\",\"value_field\":\"value\",\"series_field\":\"series\",\"peak_series\":\"负面\",\"title\":\"5月声量与情感趋势\"}"

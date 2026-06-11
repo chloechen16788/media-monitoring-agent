@@ -22,6 +22,7 @@ THEMES = {
         "area_top": "rgba(59, 130, 246, 0.25)",
         "area_bottom": "rgba(59, 130, 246, 0.02)",
         "peak": "#ef4444",
+        "palette": ["#3b82f6", "#ef4444", "#22c55e", "#a855f7", "#f59e0b", "#14b8a6"],
     },
     "dark": {
         "background": "#0f1726",
@@ -32,6 +33,7 @@ THEMES = {
         "area_top": "rgba(90, 176, 255, 0.30)",
         "area_bottom": "rgba(90, 176, 255, 0.03)",
         "peak": "#ff7849",
+        "palette": ["#5ab0ff", "#ff7849", "#34d399", "#c084fc", "#fbbf24", "#2dd4bf"],
     },
 }
 
@@ -82,8 +84,50 @@ def parse_time(value) -> datetime | None:
     return None
 
 
-def build_option(title: str, x: list, y: list, peaks: list, theme: dict, value_name: str) -> dict:
-    return {
+def build_option(
+    title: str,
+    x: list,
+    series_items: list,
+    mark_series_name: str,
+    mark_peaks: list,
+    theme: dict,
+    value_name: str,
+    show_area: bool,
+) -> dict:
+    series_payload = []
+    for item in series_items:
+        entry = {
+            "name": item["name"],
+            "type": "line",
+            "data": item["data"],
+            "smooth": True,
+            "symbolSize": 6,
+            "lineStyle": {"width": 3, "color": item["color"]},
+            "itemStyle": {"color": item["color"]},
+        }
+        if show_area:
+            entry["areaStyle"] = {
+                "color": {
+                    "type": "linear",
+                    "x": 0, "y": 0, "x2": 0, "y2": 1,
+                    "colorStops": [
+                        {"offset": 0, "color": theme["area_top"]},
+                        {"offset": 1, "color": theme["area_bottom"]},
+                    ],
+                }
+            }
+        if item["name"] == mark_series_name and mark_peaks:
+            entry["markPoint"] = {
+                "itemStyle": {"color": theme["peak"]},
+                "label": {"color": "#ffffff"},
+                "data": [
+                    {"name": "峰值", "coord": [p["time"], p["value"]], "value": p["value"]}
+                    for p in mark_peaks
+                ],
+            }
+        series_payload.append(entry)
+
+    option = {
         "backgroundColor": theme["background"],
         "title": {
             "text": title,
@@ -106,36 +150,15 @@ def build_option(title: str, x: list, y: list, peaks: list, theme: dict, value_n
             "axisLabel": {"color": theme["text"]},
             "splitLine": {"lineStyle": {"color": theme["split_line"]}},
         },
-        "series": [
-            {
-                "name": value_name,
-                "type": "line",
-                "data": y,
-                "smooth": True,
-                "symbolSize": 6,
-                "lineStyle": {"width": 3, "color": theme["line"]},
-                "itemStyle": {"color": theme["line"]},
-                "areaStyle": {
-                    "color": {
-                        "type": "linear",
-                        "x": 0, "y": 0, "x2": 0, "y2": 1,
-                        "colorStops": [
-                            {"offset": 0, "color": theme["area_top"]},
-                            {"offset": 1, "color": theme["area_bottom"]},
-                        ],
-                    }
-                },
-                "markPoint": {
-                    "itemStyle": {"color": theme["peak"]},
-                    "label": {"color": "#ffffff"},
-                    "data": [
-                        {"name": "峰值", "coord": [p["time"], p["value"]], "value": p["value"]}
-                        for p in peaks
-                    ],
-                },
-            }
-        ],
+        "series": series_payload,
     }
+    if len(series_items) > 1:
+        option["legend"] = {
+            "top": 28,
+            "textStyle": {"color": theme["text"]},
+            "data": [item["name"] for item in series_items],
+        }
+    return option
 
 
 def main() -> None:
@@ -150,6 +173,8 @@ def main() -> None:
 
     time_field = str(params.get("time_field") or "time")
     value_field = params.get("value_field")
+    series_field = params.get("series_field")
+    peak_series = str(params.get("peak_series") or "").strip()
     granularity = str(params.get("granularity") or "day")
     if granularity not in GRANULARITY_FORMAT:
         fail(f"granularity 仅支持 {sorted(GRANULARITY_FORMAT)}，收到 '{granularity}'。")
@@ -166,45 +191,99 @@ def main() -> None:
     top_peaks = max(1, top_peaks)
 
     bucket_fmt = GRANULARITY_FORMAT[granularity]
-    buckets: dict = {}
     dropped = 0
-    for record in data:
-        if not isinstance(record, dict) or time_field not in record:
-            dropped += 1
-            continue
-        moment = parse_time(record[time_field])
-        if moment is None:
-            dropped += 1
-            continue
-        if value_field is not None:
-            try:
-                amount = float(record.get(value_field))
-            except (TypeError, ValueError):
+    series_buckets: dict = {}
+    if series_field:
+        for record in data:
+            if not isinstance(record, dict) or time_field not in record or series_field not in record:
                 dropped += 1
                 continue
-        else:
-            amount = 1
-        key = moment.strftime(bucket_fmt)
-        buckets[key] = buckets.get(key, 0) + amount
+            moment = parse_time(record[time_field])
+            if moment is None:
+                dropped += 1
+                continue
+            series_name = str(record.get(series_field) or "").strip()
+            if not series_name:
+                dropped += 1
+                continue
+            if value_field is not None:
+                try:
+                    amount = float(record.get(value_field))
+                except (TypeError, ValueError):
+                    dropped += 1
+                    continue
+            else:
+                amount = 1
+            key = moment.strftime(bucket_fmt)
+            series_buckets.setdefault(series_name, {})
+            series_buckets[series_name][key] = series_buckets[series_name].get(key, 0) + amount
+    else:
+        single_buckets: dict = {}
+        for record in data:
+            if not isinstance(record, dict) or time_field not in record:
+                dropped += 1
+                continue
+            moment = parse_time(record[time_field])
+            if moment is None:
+                dropped += 1
+                continue
+            if value_field is not None:
+                try:
+                    amount = float(record.get(value_field))
+                except (TypeError, ValueError):
+                    dropped += 1
+                    continue
+            else:
+                amount = 1
+            key = moment.strftime(bucket_fmt)
+            single_buckets[key] = single_buckets.get(key, 0) + amount
+        if single_buckets:
+            series_buckets["数据条数" if value_field is None else str(value_field)] = single_buckets
 
-    if not buckets:
+    if not series_buckets:
         fail(
             f"没有任何记录能按 time_field='{time_field}' 解析出有效时间。",
-            "请确认时间字段名与格式（如 YYYY-MM-DD HH:MM:SS）；若数据不全，请先调用 es_agg_search 取数。",
+            "请确认时间字段名与格式；多线模式需提供 series_field 且每条记录具备该字段。",
         )
 
-    x = sorted(buckets.keys())
-    y = [round(buckets[k], 4) for k in x]
-    peaks = sorted(
-        ({"time": k, "value": round(buckets[k], 4)} for k in x),
-        key=lambda p: p["value"],
-        reverse=True,
-    )[:top_peaks]
+    all_time_keys = set()
+    for bucket_map in series_buckets.values():
+        all_time_keys.update(bucket_map.keys())
+    x = sorted(all_time_keys)
+
+    palette = theme.get("palette") or [theme["line"]]
+    series_items = []
+    peaks_by_series = {}
+    for idx, (series_name, bucket_map) in enumerate(series_buckets.items()):
+        y = [round(bucket_map.get(k, 0), 4) for k in x]
+        peaks = sorted(
+            ({"time": k, "value": round(bucket_map.get(k, 0), 4)} for k in x),
+            key=lambda p: p["value"],
+            reverse=True,
+        )[:top_peaks]
+        peaks_by_series[series_name] = peaks
+        series_items.append({
+            "name": series_name,
+            "data": y,
+            "color": palette[idx % len(palette)],
+        })
+
+    mark_series_name = peak_series if peak_series in peaks_by_series else series_items[0]["name"]
+    mark_peaks = peaks_by_series.get(mark_series_name, [])
 
     title = str(params.get("title") or "时间趋势折线图")
     value_name = str(value_field) if value_field else "数据条数"
 
-    option = build_option(title, x, y, peaks, theme, value_name)
+    option = build_option(
+        title=title,
+        x=x,
+        series_items=series_items,
+        mark_series_name=mark_series_name,
+        mark_peaks=mark_peaks,
+        theme=theme,
+        value_name=value_name,
+        show_area=len(series_items) == 1,
+    )
     # chart_block 是给前端的完整魔法码整串：模型必须原样复制到回复中，
     # 禁止重排/美化/手抄 JSON——手抄会引入语法错误导致前端渲染失败。
     chart_block = (
@@ -220,13 +299,15 @@ def main() -> None:
             "title": title,
             "theme": theme_key,
             "granularity": granularity,
+            "series_count": len(series_items),
+            "mark_peak_series": mark_series_name,
             "chart_block": chart_block,
-            "peaks": peaks,
+            "peaks": peaks_by_series if len(series_items) > 1 else mark_peaks,
             "stats": {
                 "points": len(x),
-                "total": round(sum(y), 4),
-                "max": max(y),
-                "min": min(y),
+                "total": round(sum(sum(item["data"]) for item in series_items), 4),
+                "max": max((max(item["data"]) for item in series_items), default=0),
+                "min": min((min(item["data"]) for item in series_items), default=0),
                 "dropped_records": dropped,
             },
         },
