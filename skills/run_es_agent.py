@@ -29,18 +29,18 @@ def main():
         for cat in categories:
             for t in cat.get("tasks", []):
                 task_id_int = 6860
-                if t.get("id") == "t_bmw": task_id_int = 6860
-                elif t.get("id") == "t_benz": task_id_int = 6861
-                elif t.get("id") == "t_audi": task_id_int = 6862
+                if t.get("id") == "t_manus": task_id_int = 6860
+                elif t.get("id") == "t_openai": task_id_int = 6861
+                elif t.get("id") == "t_anthropic": task_id_int = 6862
                 all_task_ids.add(task_id_int)
                 
         # New entityTasks format
         for entity_key, tasks in entityTasks.items():
             for t in tasks:
                 task_id_int = 6860
-                if t.get("id") == "t_bmw": task_id_int = 6860
-                elif t.get("id") == "t_benz": task_id_int = 6861
-                elif t.get("id") == "t_audi": task_id_int = 6862
+                if t.get("id") == "t_manus": task_id_int = 6860
+                elif t.get("id") == "t_openai": task_id_int = 6861
+                elif t.get("id") == "t_anthropic": task_id_int = 6862
                 all_task_ids.add(task_id_int)
 
         if not all_task_ids:

@@ -29,10 +29,91 @@
   font-size: 16px;
 }
 
+.agentBar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 8% 0;
+  flex-shrink: 0;
+}
+
+.agentBarLeft,
+.agentBarRight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.agentBarLabel {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.agentStatusMaster,
+.agentStatusSub,
+.agentStatusPending {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.agentStatusMaster {
+  background: #e6f4ff;
+  color: #1677ff;
+}
+
+.agentStatusSub {
+  background: #f6ffed;
+  color: #389e0d;
+}
+
+.agentStatusPending {
+  background: #fff7e6;
+  color: #d46b08;
+}
+
+.agentBarConfirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.agentBarConfirmPrimary {
+  border: 1px solid #52c41a;
+  background: #52c41a;
+  color: #fff;
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.agentBarConfirmPrimary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.agentBarConfirmSecondary {
+  border: 1px solid var(--border-color);
+  background: #fff;
+  color: var(--text-secondary);
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
 .messageList {
   flex: 1;
   overflow-y: auto;
-  padding: 40px 8%;
+  padding: 16px 8% 40px;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -72,6 +153,106 @@
 .inputContainer {
   padding: 0 8% 24px;
   background: linear-gradient(to top, rgba(255,255,255,1) 80%, rgba(255,255,255,0));
+}
+
+.controlBar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.modeSwitch {
+  display: inline-flex;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.modeSwitch button {
+  border: none;
+  background: #fff;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.modeSwitch .modeActive {
+  background: #1677ff;
+  color: white;
+}
+
+.modeSwitch .modeActiveSub {
+  background: #52c41a;
+  color: white;
+}
+
+.dispatchConfirm {
+  margin: 0 8% 12px;
+  padding: 14px 16px;
+  border: 1px solid #91caff;
+  border-radius: 12px;
+  background: #f0f7ff;
+}
+
+.dispatchConfirmHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: #1677ff;
+  margin-bottom: 8px;
+}
+
+.dispatchConfirmGoal {
+  margin: 0 0 4px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.dispatchConfirmMeta {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.dispatchConfirmActions {
+  display: flex;
+  gap: 8px;
+}
+
+.dispatchConfirmPrimary {
+  border: 1px solid #52c41a;
+  background: #52c41a;
+  color: #fff;
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.dispatchConfirmPrimary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.dispatchConfirmSecondary {
+  border: 1px solid var(--border-color);
+  background: #fff;
+  color: var(--text-secondary);
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.boardBtn {
+  border: 1px solid var(--border-color);
+  background: #fff;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
 }
 
 .inputBox {
@@ -190,6 +371,11 @@
 
 .dropdownItem:hover {
   background-color: var(--bg-hover);
+}
+
+.dropdownItem:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .dropdownItem span {

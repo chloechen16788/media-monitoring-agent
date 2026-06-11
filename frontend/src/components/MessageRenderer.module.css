@@ -4,6 +4,19 @@
   gap: 12px;
 }
 
+.masterCardPlaceholder {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px dashed #91caff;
+  background: #f0f7ff;
+  color: #1677ff;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .thinkBlock {
   background-color: var(--bg-sidebar);
   border-radius: 8px;
@@ -365,4 +378,26 @@
   outline: none;
   color: #333;
   cursor: pointer;
+}
+
+.chartBlock {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid #e8e8e8;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.chartError {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid #ffd6d6;
+  border-radius: 8px;
+  background: #fff5f5;
+  color: #c62828;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }

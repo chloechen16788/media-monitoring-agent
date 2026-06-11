@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import ReactECharts from 'echarts-for-react';
 import styles from './RightSidebar.module.css';
+import TaskBoard from './TaskBoard';
 import { REPORT_SCHEMAS, type ChartSchema } from '../config/reportSchemas';
 import CHART_RENDER_SCHEMA from '../../../skills/chart_render_schema.json';
 
@@ -13,7 +14,7 @@ interface RightSidebarProps {
 }
 
 const TASK_MAP: Record<string, string> = {
-  "t_bmw": "6860", "t_benz": "6861", "t_audi": "6862", "t_mini": "6863"
+  "t_manus": "6860", "t_openai": "6861", "t_anthropic": "6862", "t_google": "6863"
 };
 
 export default function RightSidebar({ config, customInsights = {}, onClose }: RightSidebarProps) {
@@ -31,7 +32,27 @@ export default function RightSidebar({ config, customInsights = {}, onClose }: R
     );
   }
 
-  const { reportType, schemaKey, entityTasks, dateRange, esData } = config.data || {};
+  if (config.mode === 'tasks') {
+    const { contract, agentMode, onDispatchToSub, onValidate } = config.data || {};
+    return (
+      <div className={styles.rightSidebar}>
+        <div className={styles.header}>
+          <h3>任务看板</h3>
+          <button onClick={onClose} className={styles.closeBtn}><i className="ri-close-line"></i></button>
+        </div>
+        <div className={styles.content}>
+          <TaskBoard
+            contract={contract}
+            agentMode={agentMode || 'master'}
+            onDispatchToSub={onDispatchToSub}
+            onValidate={onValidate}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  const { reportType, schemaKey, entityTasks, esData } = config.data || {};
   const isDynamic = reportType === 'dynamic_schema';
   const schema = isDynamic ? REPORT_SCHEMAS[schemaKey] : null;
 
@@ -59,7 +80,8 @@ export default function RightSidebar({ config, customInsights = {}, onClose }: R
     const insightText = customInsights[targetSlotId];
     
     // Dynamically retrieve render config from SCHEMA
-    const renderConfig = (CHART_RENDER_SCHEMA.charts as any)[chart.sampling_key];
+    const schemaDef = (CHART_RENDER_SCHEMA.schemas as any)[schemaKey];
+    const renderConfig = schemaDef ? schemaDef.charts[chart.sampling_key] : null;
     let opt: any = {};
     const t = tasks[0];
     const tid = t ? TASK_MAP[t.id] : null;

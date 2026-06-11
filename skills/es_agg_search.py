@@ -7,6 +7,35 @@ import traceback
 ES_URL = "http://139.198.17.239:9203"
 # INDEX_NAME will be built dynamically using uid and partition
 
+
+def _month_of(time_str) -> str | None:
+    """从时间字符串（YYYY-MM-DD ...）推导月份分区 YYYYMM。"""
+    try:
+        return datetime.strptime(str(time_str).strip()[:10], "%Y-%m-%d").strftime("%Y%m")
+    except (ValueError, TypeError):
+        return None
+
+
+def resolve_partition(params: dict):
+    """返回 (partition, error_json)。显式传入优先；否则按 start_time 月份推导。
+
+    ES 按月分库（索引名 {uid}_{partition}），partition 必须与查询时间段同月，
+    否则会出现“查询成功但 0 条数据”。跨月查询必须按月拆分多次调用。
+    """
+    explicit = str(params.get("partition") or "").strip()
+    if explicit:
+        return explicit, None
+    start_month = _month_of(params.get("start_time"))
+    end_month = _month_of(params.get("end_time"))
+    if not start_month:
+        return None, json.dumps({"error": "无法从 start_time 推导 partition，请检查时间格式（YYYY-MM-DD HH:MM:SS）或显式传入 partition。"})
+    if end_month and end_month != start_month:
+        return None, json.dumps({
+            "error": f"start_time({start_month}) 与 end_time({end_month}) 跨月。ES 按月分库，单次调用只能查一个月份分区。",
+            "hint": "请按月拆分为多次独立调用，或显式指定 partition。",
+        })
+    return start_month, None
+
 SENTIMENT_MAP = {
     0: "正面",
     1: "中性",
@@ -33,9 +62,7 @@ def execute(params: dict) -> str:
     - partition: str - 索引分区月份 (e.g. "202604")
     """
     uid = params.get("uid", "134209751")
-    partition = params.get("partition", "202512")
-    index_name = f"{uid}_{partition}"
-    
+
     task_ids = params.get("task_ids", [])
     start_time = params.get("start_time")
     end_time = params.get("end_time")
@@ -43,6 +70,11 @@ def execute(params: dict) -> str:
     
     if not task_ids or not start_time or not end_time:
         return json.dumps({"error": "缺少必要的参数: task_ids, start_time, end_time"})
+
+    partition, partition_error = resolve_partition(params)
+    if partition_error:
+        return partition_error
+    index_name = f"{uid}_{partition}"
         
     try:
         url = f"{ES_URL}/{index_name}/_search"

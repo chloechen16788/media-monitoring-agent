@@ -2,6 +2,8 @@ import React from 'react';
 import { REPORT_SCHEMAS } from '../config/reportSchemas';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import ReactECharts from 'echarts-for-react';
+import { jsonrepair } from 'jsonrepair';
 import styles from './MessageRenderer.module.css';
 
 interface MessageRendererProps {
@@ -9,39 +11,88 @@ interface MessageRendererProps {
   onShowCitation: (text: string) => void;
   onOpenWorkspace?: (config: any) => void;
   onLockInput?: (isLocked: boolean) => void;
+  userId: string;
+  projectId: string | null;
   sessionId: string;
+  agentMode?: 'master' | 'sub';
 }
 
-export default function MessageRenderer({ content, onShowCitation, onOpenWorkspace, onLockInput, sessionId }: MessageRendererProps) {
+export default function MessageRenderer({ content, onShowCitation, onOpenWorkspace, onLockInput, userId, projectId, sessionId, agentMode = 'master' }: MessageRendererProps) {
   const blockRegex = /<(think|tool_call|tool_result)>([\s\S]*?)<\/\1>/g;
   const workspaceRegex = /\[WORKSPACE_SCHEMA_START\]([\s\S]*?)\[WORKSPACE_SCHEMA_END\]/g;
+  const chartRegex = /\[CHART_OPTION_START\]([\s\S]*?)\[CHART_OPTION_END\]/g;
+  const paramRegex = /(?<!`)\[PARAM_REQUEST_START\]([\s\S]*?)\[PARAM_REQUEST_END\]/g;
   
   let processedContent = content;
-  const workspaceMatches = [];
+  // 魔法码只能从「正文」提取：必须先剥离 think/tool_call/tool_result 过程块，
+  // 否则技能说明书里的示例文字、技能 stdout 里转义形态的 chart_block 都会被误抓，
+  // 产生「解析失败/缺少 series」的假图表块。
+  const magicSource = content.replace(blockRegex, '');
+  const workspaceMatches: string[] = [];
   let wMatch;
-  while ((wMatch = workspaceRegex.exec(content)) !== null) {
+  while ((wMatch = workspaceRegex.exec(magicSource)) !== null) {
     workspaceMatches.push(wMatch[1]);
   }
   
   // Remove workspace tags from rendered markdown
   processedContent = processedContent.replace(workspaceRegex, '');
 
+  // 提取单图渲染魔法码（render_line_chart 输出的 chart_block），在聊天内直接渲染
+  const chartMatches: string[] = [];
+  let cMatch;
+  while ((cMatch = chartRegex.exec(magicSource)) !== null) {
+    chartMatches.push(cMatch[1]);
+  }
+  processedContent = processedContent.replace(chartRegex, '');
+  // 流式输出中未闭合的图表块（仅看正文，忽略过程块里的字面提及）：隐藏原始 JSON，显示占位提示
+  if (magicSource.replace(chartRegex, '').includes('[CHART_OPTION_START]')) {
+    processedContent = processedContent.replace(/\[CHART_OPTION_START\][\s\S]*$/, '\n> 📈 图表生成中...\n');
+  }
+  processedContent = processedContent.replace(paramRegex, '\n> 🧩 请在下方输入框补充参数后发送。\n');
+  if (magicSource.includes('[PARAM_REQUEST_START]') && !magicSource.includes('[PARAM_REQUEST_END]')) {
+    processedContent = processedContent.replace(
+      /\[PARAM_REQUEST_START\][\s\S]*$/,
+      '\n> 🧩 参数表单加载中...\n'
+    );
+  }
+
 
   const [cardState, setCardState] = React.useState({ step: 1, isGenerating: false, progress: 0, finished: false });
 
-  const [selectedSchemaKey, setSelectedSchemaKey] = React.useState('brand_monthly');
+  // 报告类型由上游（Master 规划）通过魔法码 schemaKey 决定；若存在则锁定选择器。
+  const plannedSchemaKey = React.useMemo(() => {
+    for (const raw of workspaceMatches) {
+      try {
+        const parsed = JSON.parse(String(raw).trim());
+        if (parsed && parsed.schemaKey && REPORT_SCHEMAS[parsed.schemaKey]) {
+          return parsed.schemaKey as string;
+        }
+      } catch (_e) {
+        // ignore malformed magic payload
+      }
+    }
+    return null;
+  }, [content]);
+
+  const [selectedSchemaKey, setSelectedSchemaKey] = React.useState(plannedSchemaKey || 'brand_monthly');
   const [dateRange, setDateRange] = React.useState('1w');
+
+  React.useEffect(() => {
+    if (plannedSchemaKey) setSelectedSchemaKey(plannedSchemaKey);
+  }, [plannedSchemaKey]);
+
+  const canGenerate = agentMode === 'sub';
   
   const availableTasks = [
-    { id: 't_bmw', name: '宝马 (本品)' }, { id: 't_benz', name: '奔驰 (竞品)' }, { id: 't_audi', name: '奥迪 (竞品)' }, { id: 't_mini', name: 'MINI (子品牌)' }
+    { id: 't_manus', name: 'Manus (本品)' }, { id: 't_openai', name: 'OpenAI (竞品)' }, { id: 't_anthropic', name: 'Anthropic (竞品)' }, { id: 't_google', name: 'Google (竞品)' }
   ];
 
   const schema = REPORT_SCHEMAS[selectedSchemaKey];
   
   // Default entity tasks
   const [entityTasks, setEntityTasks] = React.useState<{ [entityKey: string]: { id: string; name: string }[] }>({
-    brand: [{ id: 't_bmw', name: '宝马 (本品)' }],
-    competitor: [{ id: 't_benz', name: '奔驰 (竞品)' }, { id: 't_audi', name: '奥迪 (竞品)' }],
+    brand: [{ id: 't_manus', name: 'Manus (本品)' }],
+    competitor: [{ id: 't_openai', name: 'OpenAI (竞品)' }, { id: 't_anthropic', name: 'Anthropic (竞品)' }],
     product: [],
     leader: []
   });
@@ -90,7 +141,10 @@ export default function MessageRenderer({ content, onShowCitation, onOpenWorkspa
         schema: selectedSchemaKey,
         entityTasks,
         start_time,
-        end_time
+        end_time,
+        userId,
+        projectId,
+        agentMode,
       };
 
       const res = await fetch('http://localhost:3000/api/generate-report', {
@@ -98,6 +152,11 @@ export default function MessageRenderer({ content, onShowCitation, onOpenWorkspa
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
+      if (res.status === 403) {
+        setCardState(prev => ({ ...prev, isGenerating: false }));
+        alert('当前为 Master 模式，报告引擎仅 Sub 可执行。请先点击「开始执行」切换到 Sub，或手动切换到 Sub · 执行。');
+        return;
+      }
       const result = await res.json();
       
       clearInterval(progressInterval);
@@ -144,9 +203,11 @@ ${slotsContext}
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+              userId,
+              projectId,
               message: [
-                { role: 'user', content: contextMsg },
-                { role: 'assistant', content: '[隐藏回复] 收到，我已经了解了动态报告的插槽结构和底层配置上下文。我将在后续回答中精准投射数据。' }
+                { id: Date.now().toString(), type: 'message', role: 'user', content: [{ type: 'text', text: contextMsg }] },
+                { id: (Date.now() + 1).toString(), type: 'message', role: 'assistant', content: [{ type: 'text', text: '[隐藏回复] 收到，我已经了解了动态报告的插槽结构和底层配置上下文。我将在后续回答中精准投射数据。' }] }
               ]
             })
           });
@@ -160,9 +221,53 @@ ${slotsContext}
     }
   };
 
+  const renderCharts = () => {
+    if (chartMatches.length === 0) return null;
+    return chartMatches.map((raw, i) => {
+      let option: any = null;
+      const cleaned = raw.trim().replace(/^```(json)?\s*/i, '').replace(/```\s*$/, '').trim();
+      try {
+        option = JSON.parse(cleaned);
+      } catch (_e) {
+        // 模型手抄 JSON 可能漏括号/逗号，先尝试自动修复再放弃
+        try {
+          option = JSON.parse(jsonrepair(cleaned));
+        } catch (_e2) {
+          return (
+            <div key={`chart-err-${i}`} className={styles.chartError}>
+              <i className="ri-error-warning-line"></i> 图表配置解析失败，请检查 CHART_OPTION 块内是否为合法 JSON。
+            </div>
+          );
+        }
+      }
+      if (!option || typeof option !== 'object' || !option.series) {
+        return (
+          <div key={`chart-err-${i}`} className={styles.chartError}>
+            <i className="ri-error-warning-line"></i> 图表配置缺少 series 字段，无法渲染。
+          </div>
+        );
+      }
+      return (
+        <div key={`chart-${i}`} className={styles.chartBlock}>
+          <ReactECharts option={option} style={{ height: 360, width: '100%' }} notMerge lazyUpdate />
+        </div>
+      );
+    });
+  };
+
   const renderInlineCard = () => {
     if (workspaceMatches.length === 0) return null;
-    
+
+    // 配置卡仅 Sub 执行阶段展示；Master 误输出魔法码时提示用户先确认委派。
+    if (agentMode !== 'sub') {
+      return (
+        <div className={styles.masterCardPlaceholder}>
+          <i className="ri-information-line"></i>
+          <span>报告配置卡将在 Sub 接手后展示。请先在对话框顶部点击「开始执行」完成委派。</span>
+        </div>
+      );
+    }
+
     return (
       <div className={styles.inlineCard}>
         <div className={styles.cardHeader}>
@@ -179,8 +284,14 @@ ${slotsContext}
         {cardState.step === 1 && !cardState.isGenerating && (
           <div className={styles.cardBody}>
             <div className={styles.tagSection}>
-              <div className={styles.tagLabel}>报告模板：</div>
-              <select value={selectedSchemaKey} onChange={e => setSelectedSchemaKey(e.target.value)} className={styles.categoryTitleInput} style={{marginBottom: 10, padding: 8}}>
+              <div className={styles.tagLabel}>报告模板{plannedSchemaKey ? '（由 Master 规划锁定）' : '：'}</div>
+              <select
+                value={selectedSchemaKey}
+                onChange={e => setSelectedSchemaKey(e.target.value)}
+                disabled={!!plannedSchemaKey}
+                className={styles.categoryTitleInput}
+                style={{marginBottom: 10, padding: 8}}
+              >
                 {Object.keys(REPORT_SCHEMAS).map(k => (
                   <option key={k} value={k}>{REPORT_SCHEMAS[k].report_name}</option>
                 ))}
@@ -213,9 +324,14 @@ ${slotsContext}
                );
             })}
 
+            {!canGenerate && (
+              <div style={{ fontSize: 12, color: '#d46b08', marginBottom: 8 }}>
+                <i className="ri-error-warning-line"></i> 当前为 Master 模式：请点击下方「开始执行」切换到 Sub，或手动切换顶部「Sub · 执行」标签后再生成。
+              </div>
+            )}
             <div className={styles.cardFooter}>
               <button className={styles.cancelBtn} onClick={() => setCardState(p => ({...p, finished: true}))}>取消</button>
-              <button className={styles.confirmBtn} onClick={handleGenerate}>一键生成标准大屏</button>
+              <button className={styles.confirmBtn} onClick={handleGenerate} disabled={!canGenerate}>一键生成标准大屏</button>
             </div>
           </div>
         )}
@@ -307,9 +423,10 @@ ${slotsContext}
               }
               if (props.href?.startsWith('./workspace/')) {
                 const filename = props.href.split('/').pop();
+                const query = `userId=${encodeURIComponent(userId)}&projectId=${encodeURIComponent(projectId || '')}`;
                 return (
                   <a 
-                    href={`http://localhost:3000/api/sessions/${sessionId}/download/${filename}`} 
+                    href={`http://localhost:3000/api/sessions/${sessionId}/download/${filename}?${query}`} 
                     target="_blank" 
                     rel="noopener noreferrer"
                     className={styles.fileDownloadLink}
@@ -366,6 +483,7 @@ ${slotsContext}
         return null;
       })}
       
+      {renderCharts()}
       {renderInlineCard()}
     </div>
   );

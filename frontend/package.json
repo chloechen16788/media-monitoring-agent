@@ -12,6 +12,7 @@
   "dependencies": {
     "echarts": "^6.0.0",
     "echarts-for-react": "^3.0.6",
+    "jsonrepair": "^3.14.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-markdown": "^10.1.0",

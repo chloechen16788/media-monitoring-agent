@@ -12,6 +12,8 @@ import { SandboxType } from "./sandbox/interface.js";
 import { canAutoApprove } from "../../approvals.js";
 import { formatCommandForDisplay } from "../../format-command.js";
 import { access } from "fs/promises";
+import path from "path";
+import { existsSync, readFileSync } from "fs";
 
 // ---------------------------------------------------------------------------
 // Session‑level cache of commands that the user has chosen to always approve.
@@ -70,6 +72,224 @@ type HandleExecCommandResult = {
   additionalItems?: Array<ChatCompletionMessageParam>;
 };
 
+function isPathInside(parent: string, candidate: string): boolean {
+  const rel = path.relative(parent, candidate);
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+function looksLikePythonCommand(bin: string | undefined): boolean {
+  if (!bin) return false;
+  const base = path.basename(bin);
+  return /^python(\d+(\.\d+)?)?$/.test(base);
+}
+
+type CommandSafetyCheck = {
+  safe: boolean;
+  normalizedCmd?: Array<string>;
+  reason: string;
+};
+
+type RegistrySkill = {
+  id: string;
+  role?: string;
+  entry?: string;
+};
+
+let registrySkillCache:
+  | {
+      byScriptPath: Map<string, RegistrySkill>;
+      bySkillId: Map<string, RegistrySkill>;
+    }
+  | undefined;
+
+function resolveSkillScriptPath(
+  rawScript: string,
+  cwd: string,
+  skillsDir: string,
+  registry?: ReturnType<typeof loadRegistrySkills>,
+): string {
+  const candidates = [
+    path.resolve(cwd, rawScript),
+    path.resolve(skillsDir, "..", rawScript),
+    path.resolve(skillsDir, path.basename(rawScript)),
+  ];
+  // 自愈：按脚本名（=技能 id）回查 registry 的 entry 路径，
+  // 自动纠正目录层级写错的调用（如 skills/<id>.py -> skills/executor/<id>.py）。
+  const registrySkill = registry?.bySkillId.get(path.basename(rawScript, ".py"));
+  if (registrySkill?.entry) {
+    candidates.push(path.resolve(skillsDir, "..", registrySkill.entry));
+  }
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return path.resolve(cwd, rawScript);
+}
+
+function lookupRegistrySkill(
+  scriptPath: string,
+  registry: ReturnType<typeof loadRegistrySkills>,
+): RegistrySkill | undefined {
+  return (
+    registry.byScriptPath.get(scriptPath) ??
+    registry.bySkillId.get(path.basename(scriptPath, ".py"))
+  );
+}
+
+function loadRegistrySkills(skillsDir: string) {
+  if (registrySkillCache) return registrySkillCache;
+  const registryPath = path.resolve(skillsDir, "registry.json");
+  try {
+    const parsed = JSON.parse(readFileSync(registryPath, "utf8"));
+    const skills = Array.isArray(parsed?.skills) ? parsed.skills : [];
+    const byScriptPath = new Map<string, RegistrySkill>();
+    const bySkillId = new Map<string, RegistrySkill>();
+    for (const skill of skills) {
+      if (!skill?.id) continue;
+      const normalized: RegistrySkill = {
+        id: String(skill.id),
+        role: skill.role ? String(skill.role) : undefined,
+        entry: skill.entry ? String(skill.entry) : undefined,
+      };
+      bySkillId.set(normalized.id, normalized);
+      if (normalized.entry) {
+        byScriptPath.set(path.resolve(skillsDir, "..", normalized.entry), normalized);
+      }
+    }
+    registrySkillCache = { byScriptPath, bySkillId };
+    return registrySkillCache;
+  } catch {
+    registrySkillCache = { byScriptPath: new Map(), bySkillId: new Map() };
+    return registrySkillCache;
+  }
+}
+
+async function validateEnterpriseSkillCommand(
+  command: Array<string>,
+  workdir?: string,
+): Promise<CommandSafetyCheck> {
+  if (command.length === 0) {
+    return { safe: false, reason: "Empty command is not allowed." };
+  }
+
+  const cwd = workdir || process.cwd();
+  const projectRoot =
+    process.env.WORKER_PROJECT_ROOT || path.resolve(cwd, "..");
+  const skillsDir = path.resolve(
+    process.env.WORKER_SKILLS_DIR || path.join(projectRoot, "skills"),
+  );
+  const catalogPath = path.resolve(skillsDir, "catalog.json");
+  const workerMode = process.env.WORKER_AGENT_MODE === "sub" ? "sub" : "master";
+  let allowedSkills: Array<string> = [];
+  try {
+    allowedSkills = JSON.parse(process.env.WORKER_ALLOWED_SKILLS || "[]");
+  } catch {
+    allowedSkills = [];
+  }
+  const registry = loadRegistrySkills(skillsDir);
+
+  if (command[0] === "cat" && command.length === 2) {
+    const targetPath = resolveSkillScriptPath(command[1]!, cwd, skillsDir);
+    if (targetPath === catalogPath || path.basename(targetPath) === "catalog.json") {
+      return { safe: true, normalizedCmd: ["cat", catalogPath], reason: "catalog read allowed" };
+    }
+    return {
+      safe: false,
+      reason: "Only reading skills/catalog.json is allowed for cat.",
+    };
+  }
+
+  if (looksLikePythonCommand(command[0])) {
+    if (command.length < 2) {
+      return { safe: false, reason: "Python command requires a script path." };
+    }
+
+    const scriptPath = resolveSkillScriptPath(command[1]!, cwd, skillsDir, registry);
+    if (!scriptPath.endsWith(".py")) {
+      return {
+        safe: false,
+        reason: "Only Python scripts (*.py) are allowed.",
+      };
+    }
+    if (!isPathInside(skillsDir, scriptPath)) {
+      return {
+        safe: false,
+        reason: "Python script must be located inside the skills directory.",
+      };
+    }
+
+    try {
+      await access(scriptPath);
+    } catch {
+      return {
+        safe: false,
+        reason: `Python script not found: ${command[1]}. Run ["python", "${path.join(
+          skillsDir,
+          "get_skill_doc.py",
+        )}", "<skill_id>"] first and use the exact 【脚本路径】 from the manual (newer skills live in skills/executor/ or skills/planner/, not skills/).`,
+      };
+    }
+
+    const registrySkill = lookupRegistrySkill(scriptPath, registry);
+    const isSkillDocScript = path.basename(scriptPath) === "get_skill_doc.py";
+    if (workerMode === "master") {
+      if (isSkillDocScript) {
+        const pythonBin = process.env.WORKER_PYTHON_BIN?.trim() || command[0]!;
+        return {
+          safe: true,
+          normalizedCmd: [pythonBin, scriptPath, ...command.slice(2)],
+          reason: "skill doc retrieval allowed in master mode",
+        };
+      }
+      // Master 默认只允许显式登记为 role=master 的脚本，避免旧链路未登记技能绕过策略。
+      if (!registrySkill || registrySkill.role !== "master") {
+        return {
+          safe: false,
+          reason:
+            "Master agent is policy-restricted to planning/validation and cannot execute executor or unregistered skills.",
+        };
+      }
+    }
+    if (workerMode === "sub") {
+      if (isSkillDocScript) {
+        const pythonBin = process.env.WORKER_PYTHON_BIN?.trim() || command[0]!;
+        return {
+          safe: true,
+          normalizedCmd: [pythonBin, scriptPath, ...command.slice(2)],
+          reason: "skill doc retrieval allowed in sub mode",
+        };
+      }
+      if (!registrySkill || registrySkill.role !== "sub") {
+        return {
+          safe: false,
+          reason:
+            "Sub agent only accepts sub-role skills declared in registry and task_contract.allowed_skills.",
+        };
+      }
+      if (!allowedSkills.includes(registrySkill.id)) {
+        return {
+          safe: false,
+          reason: `Sub agent can only execute task_contract.allowed_skills. '${registrySkill.id}' is not allowed.`,
+        };
+      }
+    }
+
+    const pythonBin = process.env.WORKER_PYTHON_BIN?.trim() || command[0]!;
+    return {
+      safe: true,
+      normalizedCmd: [pythonBin, scriptPath, ...command.slice(2)],
+      reason: "skills python execution allowed",
+    };
+  }
+
+  return {
+    safe: false,
+    reason:
+      "Only `cat skills/catalog.json` or `python <skills/*.py>` commands are allowed.",
+  };
+}
+
 export async function handleExecCommand(
   args: ExecInput,
   config: AppConfig,
@@ -96,40 +316,25 @@ export async function handleExecCommand(
   }
 
   // 2) Enterprise Dynamic Skills核心安全拦截层 (Phase 5)
-  // 允许读取技能目录，允许执行技能说明书拉取，允许执行注册在 skills/ 下的任何脚本
+  // 仅允许读取 skills/catalog.json 或执行 skills 目录下的 Python 脚本。
   const fullCmdStr = command.join(" ");
-  const isSkillCatalogRead = fullCmdStr.includes("cat") && fullCmdStr.includes("catalog.json");
-  const isSkillDocRead = fullCmdStr.includes("get_skill_doc.py");
-  const isSkillExecution = fullCmdStr.includes("python") && fullCmdStr.includes("skills/");
+  const safetyCheck = await validateEnterpriseSkillCommand(command, args.workdir);
 
-  const isSafeCommand = isSkillCatalogRead || isSkillDocRead || isSkillExecution;
-
-  if (!isSafeCommand && deriveCommandKey(command) !== "apply_patch") {
-    log(`❌ 拦截到非法操作: ${fullCmdStr}`);
+  if (!safetyCheck.safe && deriveCommandKey(command) !== "apply_patch") {
+    log(`❌ 拦截到非法操作: ${fullCmdStr} | reason=${safetyCheck.reason}`);
     return {
-      outputText: "Permission Denied: 本企业沙箱安全策略仅允许执行 `cat skills/catalog.json` 或 `python skills/*.py` 进行技能调用。禁止执行任意系统命令（如 rm, curl 等）。请按照 DYNAMIC SKILL LIBRARY 规范调整工具调用。",
+      outputText: `Permission Denied: 本企业沙箱安全策略仅允许执行 \`cat skills/catalog.json\` 或 \`python skills/*.py\` 进行技能调用。禁止执行任意系统命令（如 rm, ls, curl 等）。拒绝原因: ${safetyCheck.reason ?? "unknown"}`,
       metadata: {
         error: "command rejected by enterprise sandbox",
-        reason: "Strict whitelist policy enforced."
+        reason: safetyCheck.reason,
       }
     };
   }
 
-  // 特权提权：跳过沙箱限制直接执行安全指令（解决 MPS 加速被阻断问题）
-  if (isSafeCommand) {
-    if (isSkillExecution || isSkillDocRead) {
-      // 如果是执行 python 技能，强制替换为虚拟环境 Python
-      const venvPython = "/Users/Zhuanz/.gemini/antigravity/scratch/my-company-agent/venv/bin/python";
-      
-      // 解析出大模型传入的参数。假设大模型可能传入类似 ["python", "/path/to/skills/xxx.py", "--arg"]
-      // 找到 python 所在的索引，将它替换为 venvPython
-      let newCmd = [...command];
-      if (newCmd[0] === "python" || newCmd[0] === "python3") {
-         newCmd[0] = venvPython;
-      }
-      args.cmd = newCmd;
-    }
-    
+  // 特权提权：安全命令可直接执行（跳过沙箱与二次弹窗）
+  if (safetyCheck.safe) {
+    args.cmd = safetyCheck.normalizedCmd || [...command];
+
     // 直接执行，跳过沙箱和二次弹窗
     const summary = await execCommand(
       args,

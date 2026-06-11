@@ -1,0 +1,183 @@
+{
+  "version": "v2",
+  "description": "Unified skill registry for master/sub agent architecture. Single source of truth; catalog.json briefs must stay identical.",
+  "skills": [
+    {
+      "id": "identify_report_type",
+      "type": "script",
+      "role": "master",
+      "group": "planner",
+      "entry": "skills/planner/identify_report_type.py",
+      "enabled": true,
+      "brief": "【Master 规划】根据用户意图识别报告类型（品牌月报 / 竞品周报）。"
+    },
+    {
+      "id": "plan_charts",
+      "type": "script",
+      "role": "master",
+      "group": "planner",
+      "entry": "skills/planner/plan_charts.py",
+      "enabled": true,
+      "brief": "【Master 规划】基于报告类型输出图表计划与建议的 allowed_skills。"
+    },
+    {
+      "id": "write_task_contract",
+      "type": "script",
+      "role": "master",
+      "group": "planner",
+      "entry": "skills/planner/write_task_contract.py",
+      "enabled": true,
+      "brief": "【Master 规划】把规划结果（goal/allowed_skills/acceptance_criteria）校验后写入项目任务契约，供用户确认后交接 Sub 执行。每轮规划完成必须调用。",
+      "env": ["WORKER_TASK_CONTRACT_FILE"],
+      "input_schema": {
+        "type": "object",
+        "required": ["goal", "allowed_skills", "acceptance_criteria"],
+        "properties": {
+          "goal": {"type": "string"},
+          "allowed_skills": {"type": "array", "items": {"type": "string"}},
+          "acceptance_criteria": {"type": "array", "items": {"type": "string"}},
+          "input_context": {"type": "object"},
+          "output_schema": {"type": "object"},
+          "task_id": {"type": "string"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "es_agg_search",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/es_agg_search.py",
+      "enabled": true,
+      "brief": "执行宏观数据统计与聚合。支持声量份额(sov)、趋势(trend)、渠道分布(channel)和情感(sentiment)等多维交叉统计。"
+    },
+    {
+      "id": "es_sample_search",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/es_sample_search.py",
+      "enabled": true,
+      "brief": "微观聚类抽样。基于相似度指纹(finger)获取特定任务下传播声量最大的、不重复的首发新闻与评论长文本，用于大模型归因分析。"
+    },
+    {
+      "id": "web_search",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/web_search.py",
+      "enabled": true,
+      "brief": "浅度联网搜索：查询互联网上的实时信息、新闻、百科等外部客观事实，返回摘要结果。"
+    },
+    {
+      "id": "deep_web_crawl",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/deep_web_crawl.py",
+      "enabled": true,
+      "brief": "深度网页阅读：提供具体的URL链接，抓取并读取该网页的完整长篇内容（转为Markdown格式）。"
+    },
+    {
+      "id": "query_reimbursement_policy",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/query_reimbursement_policy.py",
+      "enabled": true,
+      "brief": "查询公司内部的差旅、打车、餐饮等报销制度和规定。"
+    },
+    {
+      "id": "check_reimbursement_progress",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/check_reimbursement_progress.py",
+      "enabled": true,
+      "brief": "查询某位员工当前报销单的审批进度状态。"
+    },
+    {
+      "id": "send_feishu_message",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/send_feishu_message.py",
+      "enabled": true,
+      "brief": "向指定员工、部门负责人或主管发送一条飞书消息或提醒。"
+    },
+    {
+      "id": "render_line_chart",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/executor/render_line_chart.py",
+      "enabled": true,
+      "brief": "将时间序列数据渲染为 ECharts 折线图配置：横轴时间、纵轴数量加总，含主题样式与峰值标注，并返回 Top3 峰值日期供抽样归因。",
+      "input_schema": {
+        "type": "object",
+        "required": ["data"],
+        "properties": {
+          "data": {"type": "array", "items": {"type": "object"}},
+          "time_field": {"type": "string", "default": "time"},
+          "value_field": {"type": "string"},
+          "granularity": {"type": "string", "enum": ["hour", "day", "month"], "default": "day"},
+          "title": {"type": "string"},
+          "theme": {"type": "string", "enum": ["default", "dark"], "default": "default"},
+          "top_peaks": {"type": "integer", "minimum": 1, "default": 3}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "line_chart_analysis",
+      "type": "doc",
+      "group": "doc",
+      "entry": "skills/docs/line_chart_analysis_schema.md",
+      "enabled": true,
+      "brief": "【说明书】折线图分析全流程：数据齐备性检查 → es_agg_search 取数 → render_line_chart 渲染 → 峰值日期 es_sample_search 抽样归因总结。"
+    },
+    {
+      "id": "advanced_chart_sampling",
+      "type": "doc",
+      "group": "doc",
+      "entry": "skills/chart_sampling_schema.md",
+      "enabled": true,
+      "brief": "高级图表抽样规范指南：包含 9 种图表的标准抽样逻辑与 JSON 输出契约说明书。当你需要深挖大屏图表背后的具体事件和文章时，务必查阅此说明书。"
+    },
+    {
+      "id": "generate_report",
+      "type": "doc",
+      "group": "doc",
+      "entry": "skills/report_generation_schema.md",
+      "enabled": true,
+      "brief": "创建一份全新的动态全景数据分析报告卡片（如品牌月报、竞品周报等）。当用户要求生成报告、看大屏时调用此技能。"
+    },
+    {
+      "id": "chart_render_schema",
+      "type": "doc",
+      "group": "doc",
+      "entry": "skills/chart_render_schema.json",
+      "enabled": true,
+      "brief": "【说明书】图表渲染协议：定义各报告模板下每个图表的类型、数据源字段与统计口径。撰写报告洞察前务必查阅。"
+    }
+  ]
+}

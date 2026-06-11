@@ -2,7 +2,10 @@ import type {
   ExecInput,
   ExecOutputMetadata,
 } from "./agent/sandbox/interface.js";
-import type { ChatCompletionMessageToolCall } from "openai/resources/chat/completions.mjs";
+import type {
+  ChatCompletionMessageParam,
+  ChatCompletionMessageToolCall,
+} from "openai/resources/chat/completions.mjs";
 import type { ResponseFunctionToolCall } from "openai/resources/responses/responses.mjs";
 
 import { log } from "node:console";
@@ -121,4 +124,51 @@ function toStringArray(obj: unknown): Array<string> | undefined {
   } else {
     return undefined;
   }
+}
+
+/**
+ * Normalize tool-call arguments to valid JSON matching the shell tool schema.
+ * Maps legacy `cmd` -> `command` and re-serializes so providers receive
+ * strictly valid JSON strings (avoids 400 invalid function arguments).
+ */
+export function normalizeToolCallArgumentsString(
+  raw: string | undefined,
+): string {
+  const parsed = parseToolCallArguments(raw ?? "");
+  if (!parsed?.cmd?.length) {
+    return JSON.stringify({ command: [] });
+  }
+  const payload: Record<string, unknown> = { command: parsed.cmd };
+  if (parsed.workdir) payload.workdir = parsed.workdir;
+  if (parsed.timeoutInMillis != null) payload.timeout = parsed.timeoutInMillis;
+  return JSON.stringify(payload);
+}
+
+export function sanitizeAssistantMessage(
+  message: ChatCompletionMessageParam,
+): ChatCompletionMessageParam {
+  if (message.role !== "assistant" || !("tool_calls" in message) || !message.tool_calls) {
+    return message;
+  }
+  return {
+    ...message,
+    tool_calls: message.tool_calls.map((toolCall) => {
+      if (toolCall.type !== "function") {
+        return toolCall;
+      }
+      return {
+        ...toolCall,
+        function: {
+          ...toolCall.function,
+          arguments: normalizeToolCallArgumentsString(toolCall.function?.arguments),
+        },
+      };
+    }),
+  };
+}
+
+export function sanitizeMessagesForApi(
+  messages: Array<ChatCompletionMessageParam>,
+): Array<ChatCompletionMessageParam> {
+  return messages.map((message) => sanitizeAssistantMessage(message));
 }

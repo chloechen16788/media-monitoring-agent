@@ -8,3 +8,8 @@ __pycache__/
 dist/
 models/
 chroma_db/
+data/users/*/projects/*/sessions/*/messages.json
+data/users/*/projects/*/sessions/*/session_memory.md
+data/users/*/projects/*/project_memory.*
+data/users/*/projects/*/task_contract.json
+data/users/*/projects/*/workspace/

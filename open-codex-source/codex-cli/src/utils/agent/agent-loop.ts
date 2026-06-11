@@ -10,7 +10,11 @@ import type { Stream } from "openai/streaming.mjs";
 
 import { log, isLoggingEnabled } from "./log.js";
 import { OPENAI_TIMEOUT_MS } from "../config.js";
-import { parseToolCallArguments } from "../parsers.js";
+import {
+  parseToolCallArguments,
+  sanitizeAssistantMessage,
+  sanitizeMessagesForApi,
+} from "../parsers.js";
 import {
   ORIGIN,
   CLI_VERSION,
@@ -494,6 +498,12 @@ export class AgentLoop {
               );
             }
             // eslint-disable-next-line no-await-in-loop
+            const apiMessages = sanitizeMessagesForApi([
+              ...prevItems,
+              ...(staged.filter(
+                Boolean,
+              ) as Array<ChatCompletionMessageParam>),
+            ]);
             stream = await this.oai.chat.completions.create({
               model: this.model,
               stream: true,
@@ -502,10 +512,7 @@ export class AgentLoop {
                   role: "system",
                   content: mergedInstructions,
                 },
-                ...prevItems,
-                ...(staged.filter(
-                  Boolean,
-                ) as Array<ChatCompletionMessageParam>),
+                ...apiMessages,
               ],
               reasoning_effort: reasoning,
               tools: [
@@ -520,6 +527,12 @@ export class AgentLoop {
                       type: "object",
                       properties: {
                         command: { type: "array", items: { type: "string" } },
+                        cmd: {
+                          type: "array",
+                          items: { type: "string" },
+                          description:
+                            "Deprecated alias of command. Prefer command.",
+                        },
                         workdir: {
                           type: "string",
                           description: "The working directory for the command.",
@@ -763,8 +776,9 @@ export class AgentLoop {
               if (thisGeneration === this.generation && !this.canceled) {
                 // Process completed tool calls
                 if (message?.tool_calls?.[0]) {
-                  stageItem(message);
-                  const results = await this.handleFunctionCall(message);
+                  const sanitizedMessage = sanitizeAssistantMessage(message);
+                  stageItem(sanitizedMessage);
+                  const results = await this.handleFunctionCall(sanitizedMessage);
                   if (results.length > 0) {
                     // Add results to the next turn's input
                     turnInput.push(...results);

@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TaskContract",
+  "type": "object",
+  "required": [
+    "task_id",
+    "project_id",
+    "owner_user_id",
+    "goal",
+    "allowed_skills",
+    "acceptance_criteria",
+    "output_schema"
+  ],
+  "properties": {
+    "task_id": {
+      "type": "string"
+    },
+    "project_id": {
+      "type": "string"
+    },
+    "owner_user_id": {
+      "type": "string"
+    },
+    "goal": {
+      "type": "string"
+    },
+    "input_context": {
+      "type": "object"
+    },
+    "allowed_skills": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "acceptance_criteria": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "output_schema": {
+      "type": "object"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["planned", "executing", "validating", "completed", "failed"]
+    },
+    "executor_result": {
+      "type": "object"
+    },
+    "validation_result": {
+      "type": "object"
+    },
+    "updated_at": {
+      "type": "string"
+    },
+    "retry_policy": {
+      "type": "object",
+      "properties": {
+        "max_retries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "on_failure": {
+          "type": "string",
+          "enum": ["return_error", "request_more_input", "fallback_skill"]
+        }
+      }
+    }
+  }
+}
