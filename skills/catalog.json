@@ -48,6 +48,14 @@
     "brief": "【说明书】折线图分析全流程：数据齐备性检查 → es_agg_search 取数 → render_line_chart 渲染 → 峰值日期 es_sample_search 抽样归因总结。"
   },
   {
+    "id": "render_pie_chart",
+    "brief": "将分布类统计数据渲染为 ECharts 饼图（pie）或环形图（donut）：支持情感/渠道/SOV/媒体来源等维度，内置主题样式，返回 Top N 切片供分类抽样归因。"
+  },
+  {
+    "id": "pie_chart_analysis",
+    "brief": "【说明书】饼图/环形图分析全流程：es_agg_search 取分布数据（sentiment/channel/sov/sources）→ render_pie_chart 渲染 → 按切片类型用 es_sample_search 抽样归因（情感用 sentiment_filter，渠道用 channel_filter，SOV 用单 task_id）。"
+  },
+  {
     "id": "advanced_chart_sampling",
     "brief": "高级图表抽样规范指南：包含 9 种图表的标准抽样逻辑与 JSON 输出契约说明书。当你需要深挖大屏图表背后的具体事件和文章时，务必查阅此说明书。"
   },

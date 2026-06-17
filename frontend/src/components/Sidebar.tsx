@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import styles from './Sidebar.module.css';
 import AgentPromptEditor from './AgentPromptEditor';
 
@@ -21,6 +21,9 @@ interface SidebarProps {
   onSelectSession: (id: string) => void;
   taskContract?: any;
   onOpenPlan?: () => void;
+  devVisible?: boolean;
+  onToggleDev?: () => void;
+  sessionRefreshSignal?: number;
 }
 
 const PLAN_STATUS_LABELS: Record<string, string> = {
@@ -39,9 +42,14 @@ export default function Sidebar({
   onSelectSession,
   taskContract,
   onOpenPlan,
+  devVisible = false,
+  onToggleDev,
+  sessionRefreshSignal,
 }: SidebarProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
+  const eggClickCountRef = useRef(0);
+  const eggTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchProjects = async () => {
     try {
@@ -87,11 +95,15 @@ export default function Sidebar({
     fetchSessions();
   }, [userId, currentProjectId]);
 
+  useEffect(() => {
+    if (sessionRefreshSignal !== undefined && sessionRefreshSignal > 0) {
+      fetchSessions();
+    }
+  }, [sessionRefreshSignal]);
+
   const handleCreateSession = async () => {
-    const title = prompt("请输入新会话标题", "新会话");
-    if (!title) return;
     try {
-      const payload: Record<string, string> = { userId, title };
+      const payload: Record<string, string> = { userId };
       if (currentProjectId) {
         payload.projectId = currentProjectId;
       }
@@ -111,6 +123,19 @@ export default function Sidebar({
       }
     } catch (err) {
       console.error("Failed to create session", err);
+    }
+  };
+
+  const handleLogoClick = () => {
+    eggClickCountRef.current += 1;
+    if (eggTimerRef.current) clearTimeout(eggTimerRef.current);
+    if (eggClickCountRef.current >= 3) {
+      eggClickCountRef.current = 0;
+      onToggleDev?.();
+    } else {
+      eggTimerRef.current = setTimeout(() => {
+        eggClickCountRef.current = 0;
+      }, 800);
     }
   };
 
@@ -136,28 +161,32 @@ export default function Sidebar({
   return (
     <div className={styles.sidebar}>
       <div className={styles.header}>
-        <div className={styles.logo}>
+        <div className={styles.logo} onClick={handleLogoClick} style={{ cursor: 'default', userSelect: 'none' }}>
           <i className="ri-robot-2-line"></i>
-          <span>Enterprise Agent</span>
+          <span>CMM Agent</span>
         </div>
         <button className={styles.newChatBtn} onClick={handleCreateSession}>
           <i className="ri-add-line"></i> 新建聊天
         </button>
-        <button className={styles.newChatBtn} onClick={handleCreateProject}>
-          <i className="ri-folder-add-line"></i> 新建项目
-        </button>
-        <select
-          className={styles.projectSelect}
-          value={currentProjectId || ''}
-          onChange={(e) => onSelectProject(e.target.value)}
-        >
-          {projects.length === 0 && <option value="">请先创建项目或直接新建聊天</option>}
-          {projects.map((p) => (
-            <option key={p.project_id} value={p.project_id}>
-              {p.name} ({p.project_id})
-            </option>
-          ))}
-        </select>
+        {devVisible && (
+          <button className={styles.newChatBtn} onClick={handleCreateProject}>
+            <i className="ri-folder-add-line"></i> 新建项目
+          </button>
+        )}
+        {devVisible && (
+          <select
+            className={styles.projectSelect}
+            value={currentProjectId || ''}
+            onChange={(e) => onSelectProject(e.target.value)}
+          >
+            {projects.length === 0 && <option value="">请先创建项目或直接新建聊天</option>}
+            {projects.map((p) => (
+              <option key={p.project_id} value={p.project_id}>
+                {p.name} ({p.project_id})
+              </option>
+            ))}
+          </select>
+        )}
       </div>
       
       <div className={styles.sessionList}>
@@ -175,7 +204,7 @@ export default function Sidebar({
       </div>
       
       <div className={styles.footer}>
-        {taskContract?.goal ? (
+        {devVisible && taskContract?.goal ? (
           <div
             className={styles.planCard}
             onClick={onOpenPlan}
@@ -204,7 +233,7 @@ export default function Sidebar({
           <i className="ri-user-smile-line"></i>
           <span>{userId}</span>
         </div>
-        <AgentPromptEditor userId={userId} />
+        {devVisible && <AgentPromptEditor userId={userId} />}
       </div>
     </div>
   );

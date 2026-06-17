@@ -158,6 +158,46 @@
       "brief": "【说明书】折线图分析全流程：数据齐备性检查 → es_agg_search 取数 → render_line_chart 渲染 → 峰值日期 es_sample_search 抽样归因总结。"
     },
     {
+      "id": "render_pie_chart",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/executor/render_pie_chart.py",
+      "enabled": true,
+      "brief": "将分布类统计数据渲染为 ECharts 饼图（pie）或环形图（donut）：支持情感/渠道/SOV/媒体来源等维度，内置主题样式，返回 Top N 切片供分类抽样归因。",
+      "input_schema": {
+        "type": "object",
+        "required": ["data"],
+        "properties": {
+          "data": {"type": "array", "items": {"type": "object"}},
+          "name_field": {"type": "string", "default": "name"},
+          "value_field": {"type": "string", "default": "value"},
+          "chart_type": {"type": "string", "enum": ["pie", "donut"], "default": "pie"},
+          "title": {"type": "string"},
+          "theme": {"type": "string", "enum": ["default", "dark"], "default": "default"},
+          "top_slices": {"type": "integer", "minimum": 1, "default": 3}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "pie_chart_analysis",
+      "type": "doc",
+      "group": "doc",
+      "entry": "skills/docs/pie_chart_analysis_schema.md",
+      "enabled": true,
+      "brief": "【说明书】饼图/环形图分析全流程：es_agg_search 取分布数据（sentiment/channel/sov/sources）→ render_pie_chart 渲染 → 按切片类型用 es_sample_search 抽样归因（情感用 sentiment_filter，渠道用 channel_filter，SOV 用单 task_id）。"
+    },
+    {
       "id": "advanced_chart_sampling",
       "type": "doc",
       "group": "doc",

@@ -6,6 +6,8 @@ import ParamRequestBar, {
   type ParamRequestField,
   type ParamRequestPayload,
 } from './ParamRequestBar';
+import SkillFallbackBar, { type SkillFallbackPayload } from './SkillFallbackBar';
+import DispatchConfirmBar from './DispatchConfirmBar';
 
 type AgentMode = 'master' | 'sub';
 
@@ -21,6 +23,8 @@ interface ChatAreaProps {
   onUpdateInsight?: (target: string, text: string) => void;
   onTaskContractChanged?: () => void;
   subDispatchSignal: number;
+  devVisible?: boolean;
+  onSessionTitleUpdated?: () => void;
 }
 
 interface Message {
@@ -59,6 +63,8 @@ export default function ChatArea({
   onUpdateInsight,
   onTaskContractChanged,
   subDispatchSignal,
+  devVisible = false,
+  onSessionTitleUpdated,
 }: ChatAreaProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -73,8 +79,8 @@ export default function ChatArea({
   >({});
   const [paramErrors, setParamErrors] = useState<Record<string, string>>({});
   const [paramShakeToken, setParamShakeToken] = useState(0);
-  // state 值暂未消费，仅保留 setter 供分发流程记录草稿契约
-  const [, setPendingContract] = useState<any>(null);
+  const [skillFallback, setSkillFallback] = useState<SkillFallbackPayload | null>(null);
+  const [pendingContract, setPendingContract] = useState<any>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -87,6 +93,9 @@ export default function ChatArea({
   const abortReasonRef = useRef<string>('manual');
   const pendingSubDispatchRef = useRef(false);
   const dispatchingSubRef = useRef(false);
+  const isFirstMessageRef = useRef(true);
+  const turnStartRef = useRef<number>(0);
+  const wroteContractThisTurnRef = useRef(false);
 
   const [isInputLocked, setIsInputLocked] = useState(false);
 
@@ -104,6 +113,8 @@ export default function ChatArea({
     setParamRequest(null);
     setParamValues({});
     setParamErrors({});
+    setSkillFallback(null);
+    isFirstMessageRef.current = true;
   }, [currentSessionId]);
 
   const slashSkills = useMemo(() => {
@@ -358,6 +369,41 @@ export default function ChatArea({
     }
   }, [messages]);
 
+  // 解析 SKILL_FALLBACK 魔法码：Sub 检测到技能缺口时触发
+  useEffect(() => {
+    const lastMsg = messages[messages.length - 1];
+    if (!lastMsg || lastMsg.role !== 'assistant' || lastMsg.producedBy !== 'sub') return;
+
+    const cleanContent = lastMsg.content.replace(PROCESS_BLOCK_REGEX, '');
+    if (
+      cleanContent.includes('[SKILL_FALLBACK_START]') &&
+      !cleanContent.includes('[SKILL_FALLBACK_END]')
+    ) {
+      return; // 等流式完整
+    }
+
+    const regex = /(?<!`)\[SKILL_FALLBACK_START\]([\s\S]*?)\[SKILL_FALLBACK_END\]/g;
+    let match: RegExpExecArray | null;
+    let latest: SkillFallbackPayload | null = null;
+    while ((match = regex.exec(cleanContent)) !== null) {
+      try {
+        const parsed = JSON.parse(match[1].trim());
+        if (parsed && typeof parsed.message === 'string') {
+          latest = {
+            message: parsed.message,
+            missing_skills: Array.isArray(parsed.missing_skills) ? parsed.missing_skills : undefined,
+            context: parsed.context ? String(parsed.context) : undefined,
+          };
+        }
+      } catch {
+        // ignore malformed payload
+      }
+    }
+    if (latest) {
+      setSkillFallback(latest);
+    }
+  }, [messages]);
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!currentSessionId || !projectId || !e.target.files || e.target.files.length === 0) return;
     const file = e.target.files[0];
@@ -403,7 +449,11 @@ export default function ChatArea({
       return false;
     }
     const status = String(contract?.status || 'planned').toLowerCase();
-    return status !== 'executing';
+    if (status === 'executing') return false;
+    // 只有本轮响应中检测到 write_task_contract 调用，才弹出确认
+    // 避免历史遗留契约在新会话/打招呼时误触发
+    if (!wroteContractThisTurnRef.current) return false;
+    return true;
   };
 
   // 交接执行的就绪判断：与 shouldOfferSubDispatch 不同，executing 状态也允许
@@ -461,6 +511,21 @@ export default function ChatArea({
     await dispatchSubExecution();
   };
 
+  const updateSessionTitle = async (sessionId: string, firstMessage: string) => {
+    const raw = firstMessage.replace(/[\r\n]+/g, ' ').trim();
+    const title = [...raw].slice(0, 10).join('') || '新对话';
+    try {
+      await fetch(`http://localhost:3000/api/sessions/${encodeURIComponent(sessionId)}/title`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      });
+      onSessionTitleUpdated?.();
+    } catch {
+      // title update is best-effort
+    }
+  };
+
   const sendPrompt = async (
     promptText: string,
     options?: { mode?: AgentMode; skipAutoDispatch?: boolean }
@@ -468,6 +533,13 @@ export default function ChatArea({
     const requestMode = options?.mode ?? agentMode;
     if (!currentSessionId || !projectId || isStreamingRef.current) return;
 
+    if (isFirstMessageRef.current) {
+      isFirstMessageRef.current = false;
+      updateSessionTitle(currentSessionId, promptText);
+    }
+
+    turnStartRef.current = Date.now();
+    wroteContractThisTurnRef.current = false;
     const userMsgId = Date.now().toString();
     setMessages((prev) => [...prev, { id: userMsgId, role: 'user', content: promptText }]);
     setInput('');
@@ -531,6 +603,11 @@ export default function ChatArea({
                       : '';
 
                   if (event.data.tool_calls) {
+                    const toolCallJson = JSON.stringify(event.data.tool_calls);
+                    // 只检测实际的工具调用 JSON，不检测文字提及
+                    if (requestMode === 'master' && toolCallJson.includes('write_task_contract')) {
+                      wroteContractThisTurnRef.current = true;
+                    }
                     textDelta += `\n<tool_call>\n\`\`\`json\n${JSON.stringify(
                       event.data.tool_calls,
                       null,
@@ -545,10 +622,7 @@ export default function ChatArea({
                   );
                   lastAssistantChunkAtRef.current = Date.now();
                   hasAssistantChunkRef.current = true;
-                  if (
-                    requestMode === 'master' &&
-                    textDelta.includes('[WORKSPACE_SCHEMA_START]')
-                  ) {
+                  if (requestMode === 'master' && textDelta.includes('[WORKSPACE_SCHEMA_START]')) {
                     void offerDispatchConfirm();
                   }
                 } else if (role === 'tool') {
@@ -764,34 +838,17 @@ export default function ChatArea({
                 <span className={styles.agentStatusSub}>
                   <i className="ri-play-circle-fill"></i> Sub 已接手执行
                 </span>
-              ) : pendingDispatchConfirm ? (
-                <div className={styles.agentBarConfirm}>
-                  <span className={styles.agentStatusPending}>
-                    <i className="ri-time-line"></i> 规划完成，等待确认
-                  </span>
-                  <button
-                    type="button"
-                    className={styles.agentBarConfirmPrimary}
-                    onClick={handleConfirmDispatch}
-                  >
-                    开始执行
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.agentBarConfirmSecondary}
-                    onClick={() => setPendingDispatchConfirm(false)}
-                  >
-                    稍后
-                  </button>
-                </div>
               ) : (
                 <span className={styles.agentStatusMaster}>
-                  <i className="ri-compass-3-line"></i> Master 规划中
+                  <i className={pendingDispatchConfirm ? 'ri-checkbox-circle-line' : 'ri-compass-3-line'}></i>
+                  {pendingDispatchConfirm ? ' 规划完成↓' : ' Master 规划中'}
                 </span>
               )}
-              <button type="button" className={styles.boardBtn} onClick={onOpenTaskBoard}>
-                <i className="ri-kanban-view-2"></i> 任务看板
-              </button>
+              {devVisible && (
+                <button type="button" className={styles.boardBtn} onClick={onOpenTaskBoard}>
+                  <i className="ri-kanban-view-2"></i> 任务看板
+                </button>
+              )}
             </div>
           </div>
 
@@ -803,26 +860,32 @@ export default function ChatArea({
                   {msg.role === 'user' ? <i className="ri-user-line"></i> : <i className="ri-robot-2-fill"></i>}
                 </div>
                 <div className={styles.messageContent}>
-                  <MessageRenderer
-                    content={msg.content.replace(
-                      // (?<!`) 反引号内的字面提及（Master 计划描述）按普通文本渲染，不显示投射占位符
-                      /(?<!`)<\s*UPDATE_INSIGHT\s+target=['"][^'"]+['"]\s*>([\s\S]*?)(?:<\/\s*UPDATE_INSIGHT\s*>|$)/gi,
-                      '\n\n*[✨ 正在将深度洞察投射至右侧大屏...]*\n\n'
-                    )}
-                    onShowCitation={onShowCitation}
-                    onOpenWorkspace={onOpenWorkspace}
-                    onLockInput={setIsInputLocked}
-                    userId={userId}
-                    projectId={projectId}
-                    sessionId={currentSessionId}
-                    agentMode={
-                      msg.producedBy === 'sub'
-                        ? 'sub'
-                        : msg.producedBy === 'master'
-                        ? 'master'
-                        : displayAgentMode
-                    }
-                  />
+                  {msg.role === 'assistant' && msg.content === '' ? (
+                    <div className={styles.thinkingDots}>
+                      <span /><span /><span />
+                    </div>
+                  ) : (
+                    <MessageRenderer
+                      content={msg.content.replace(
+                        // (?<!`) 反引号内的字面提及（Master 计划描述）按普通文本渲染，不显示投射占位符
+                        /(?<!`)<\s*UPDATE_INSIGHT\s+target=['"][^'"]+['"]\s*>([\s\S]*?)(?:<\/\s*UPDATE_INSIGHT\s*>|$)/gi,
+                        '\n\n*[✨ 正在将深度洞察投射至右侧大屏...]*\n\n'
+                      )}
+                      onShowCitation={onShowCitation}
+                      onOpenWorkspace={onOpenWorkspace}
+                      onLockInput={setIsInputLocked}
+                      userId={userId}
+                      projectId={projectId}
+                      sessionId={currentSessionId}
+                      agentMode={
+                        msg.producedBy === 'sub'
+                          ? 'sub'
+                          : msg.producedBy === 'master'
+                          ? 'master'
+                          : displayAgentMode
+                      }
+                    />
+                  )}
                 </div>
               </div>
             ))}
@@ -858,6 +921,35 @@ export default function ChatArea({
                     style={{ cursor: 'pointer', marginLeft: '8px' }}
                   ></i>
                 </div>
+              )}
+              {pendingDispatchConfirm && (
+                <DispatchConfirmBar
+                  goal={pendingContract?.goal}
+                  onExecute={() => {
+                    setPendingDispatchConfirm(false);
+                    handleConfirmDispatch();
+                  }}
+                  onLater={() => setPendingDispatchConfirm(false)}
+                />
+              )}
+              {skillFallback && (
+                <SkillFallbackBar
+                  payload={skillFallback}
+                  onSwitchMaster={async (context) => {
+                    setSkillFallback(null);
+                    // 先切换到 Master 模式
+                    await onChangeAgentMode('master');
+                    // 再带着上下文自动发送重新规划请求
+                    const masterPrompt = `[技能缺口] 请重新规划任务契约，加入所需技能后我会交给 Sub 执行。需求：${context}`;
+                    sendPrompt(masterPrompt, { mode: 'master' });
+                  }}
+                  onContinue={() => {
+                    // 用户选择忽略缺口，用现有技能继续，Sub 将自行决定怎么完成
+                    setSkillFallback(null);
+                    sendPrompt('请用当前契约里的现有技能尽力完成任务。', { mode: 'sub' });
+                  }}
+                  onDismiss={() => setSkillFallback(null)}
+                />
               )}
               {paramRequest && (
                 <ParamRequestBar

@@ -317,10 +317,18 @@ export class AgentLoop {
     }
 
     if (args == null) {
+      // 尽量给模型明确的重试指导：区分"多 JSON 拼接"和"彻底无法解析"两种情况
+      const isMultiJson =
+        typeof rawArguments === "string" &&
+        rawArguments.trim().endsWith("}") &&
+        /\}\s*\{/.test(rawArguments);
+      const errorMsg = isMultiJson
+        ? `RULE VIOLATION: You sent multiple JSON objects as tool call arguments. CRITICAL RULE: issue exactly ONE tool call at a time. Re-send only the first command now, then wait for its result before issuing the next.`
+        : `Invalid tool call arguments (could not parse JSON): ${rawArguments?.slice(0, 200)}`;
       const outputItem: ChatCompletionMessageParam = {
         role: "tool",
         tool_call_id: callId,
-        content: `invalid arguments: ${rawArguments}`,
+        content: errorMsg,
       };
       return [outputItem];
     }

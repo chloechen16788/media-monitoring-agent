@@ -57,6 +57,7 @@ def execute(params: dict) -> str:
     - uid: str/int - 用户 ID
     - partition: str - 索引分区月份 (e.g. "202604")
     - sentiment_filter: int - 强制情感过滤 (如 -1 代表仅抽取负面)
+    - channel_filter: int or list[int] - 按渠道 ID 过滤 (如 108 代表微博，支持单值或数组)
     """
     uid = params.get("uid", "134209751")
 
@@ -66,6 +67,7 @@ def execute(params: dict) -> str:
     keywords = params.get("keywords", "")
     size = int(params.get("size", 20))
     sentiment_filter = params.get("sentiment_filter")
+    channel_filter = params.get("channel_filter")
     
     if not task_ids or not start_time or not end_time:
         return json.dumps({"error": "缺少必要的参数: task_ids, start_time, end_time"})
@@ -101,6 +103,12 @@ def execute(params: dict) -> str:
             must_filters.append({
                 "term": {"sentiment": int(sentiment_filter)}
             })
+
+        if channel_filter is not None:
+            if isinstance(channel_filter, list):
+                must_filters.append({"terms": {"dataChannel": [int(c) for c in channel_filter]}})
+            else:
+                must_filters.append({"term": {"dataChannel": int(channel_filter)}})
             
         payload = {
             "size": 0,

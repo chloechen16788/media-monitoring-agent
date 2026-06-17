@@ -87,6 +87,29 @@ export function parseToolCall(
  * with a "cmd" or "command" property that is an `Array<string>`, then returns
  * that array. Otherwise, returns undefined.
  */
+/**
+ * 从可能含多个拼接 JSON 对象的字符串中提取第一个完整 JSON 对象。
+ * 模型有时会把多个 tool call 的 arguments 拼在一起，导致 JSON.parse 失败；
+ * 此函数截取第一个合法对象，保证至少第一条命令能执行。
+ */
+function extractFirstJsonObject(raw: string): string | null {
+  let depth = 0;
+  let started = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (ch === "{") {
+      depth++;
+      started = true;
+    } else if (ch === "}") {
+      depth--;
+      if (started && depth === 0) {
+        return raw.slice(0, i + 1);
+      }
+    }
+  }
+  return null;
+}
+
 export function parseToolCallArguments(
   toolCallArguments: string,
 ): ExecInput | undefined {
@@ -94,8 +117,23 @@ export function parseToolCallArguments(
   try {
     json = JSON.parse(toolCallArguments);
   } catch (err) {
-    log(`Failed to parse toolCall.arguments: ${toolCallArguments}`);
-    return undefined;
+    // 检测"多个 JSON 对象拼接"的情况（模型违反了"每次只发一条 tool call"规则）：
+    // 提取第一个合法 JSON 对象并执行，其余部分丢弃。
+    const firstObj = extractFirstJsonObject(toolCallArguments);
+    if (firstObj && firstObj !== toolCallArguments.trim()) {
+      try {
+        json = JSON.parse(firstObj);
+        log(
+          `[WARN] toolCall.arguments contained multiple JSON objects; executing only the first one. Full args: ${toolCallArguments}`,
+        );
+      } catch {
+        log(`Failed to parse toolCall.arguments: ${toolCallArguments}`);
+        return undefined;
+      }
+    } else {
+      log(`Failed to parse toolCall.arguments: ${toolCallArguments}`);
+      return undefined;
+    }
   }
 
   if (typeof json !== "object" || json == null) {

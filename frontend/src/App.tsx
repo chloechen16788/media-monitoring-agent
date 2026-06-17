@@ -28,6 +28,8 @@ function App() {
   const [agentMode, setAgentMode] = useState<AgentMode>('master');
   const [taskContract, setTaskContract] = useState<any>(null);
   const [subDispatchSignal, setSubDispatchSignal] = useState(0);
+  const [devVisible, setDevVisible] = useState(false);
+  const [sessionRefreshSignal, setSessionRefreshSignal] = useState(0);
   // 手动锁定模式：用户一旦手动切到某个 Agent，运行时刷新就不再用自动判定覆盖它，
   // 直到用户切回另一模式或切换项目/会话（重新规划上下文）。用 ref 同步读取避免闭包取到旧值。
   const manualModeRef = useRef<AgentMode | null>(null);
@@ -267,6 +269,9 @@ function App() {
         onSelectSession={handleSelectSession} 
         taskContract={taskContract}
         onOpenPlan={handleOpenTaskBoard}
+        devVisible={devVisible}
+        onToggleDev={() => setDevVisible(v => !v)}
+        sessionRefreshSignal={sessionRefreshSignal}
       />
       <ChatArea 
         userId={userId} 
@@ -284,6 +289,8 @@ function App() {
           }
         }}
         subDispatchSignal={subDispatchSignal}
+        devVisible={devVisible}
+        onSessionTitleUpdated={() => setSessionRefreshSignal(s => s + 1)}
       />
       {rightPanel && (
         <RightSidebar 

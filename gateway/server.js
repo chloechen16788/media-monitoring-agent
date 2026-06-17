@@ -1020,6 +1020,20 @@ app.post('/api/sessions', (req, res) => {
   }
 });
 
+app.patch('/api/sessions/:sessionId/title', (req, res) => {
+  const { sessionId } = req.params;
+  const { title } = req.body;
+  if (!title || !title.trim()) return res.status(400).json({ error: 'title is required' });
+  db.run(
+    `UPDATE sessions SET title = ? WHERE session_id = ?`,
+    [title.trim(), sessionId],
+    function(err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ session_id: sessionId, title: title.trim() });
+    }
+  );
+});
+
 // 子进程 worker.js 的路径
 const WORKER_PATH = path.resolve(__dirname, '../open-codex-source/codex-cli/dist/worker.js');
 
