@@ -296,7 +296,14 @@ def execute(params: dict) -> str:
                 tid = t_bucket["key"]
                 days = []
                 for d in t_bucket.get("daily_trend", {}).get("buckets", []):
-                    ch_items = [{"channel": c["key"], "doc_count": c["doc_count"]} for c in d.get("by_channel", {}).get("buckets", [])]
+                    ch_items = []
+                    for c in d.get("by_channel", {}).get("buckets", []):
+                        c_id = c["key"]
+                        ch_items.append({
+                            "channel_id": c_id,
+                            "channel_name": DATA_CHANNEL_MAP.get(c_id, f"未知渠道({c_id})"),
+                            "doc_count": c["doc_count"],
+                        })
                     days.append({"date": d["key_as_string"], "channels": ch_items})
                 trend_ch_data[tid] = days
             result["aggs"]["trend_by_channel"] = trend_ch_data

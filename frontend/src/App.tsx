@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import './App.css';
 import Sidebar from './components/Sidebar';
 import ChatArea from './components/ChatArea';
@@ -28,6 +28,12 @@ function App() {
   const [agentMode, setAgentMode] = useState<AgentMode>('master');
   const [taskContract, setTaskContract] = useState<any>(null);
   const [subDispatchSignal, setSubDispatchSignal] = useState(0);
+  // 手动锁定模式：用户一旦手动切到某个 Agent，运行时刷新就不再用自动判定覆盖它，
+  // 直到用户切回另一模式或切换项目/会话（重新规划上下文）。用 ref 同步读取避免闭包取到旧值。
+  const manualModeRef = useRef<AgentMode | null>(null);
+  const lockManualMode = (mode: AgentMode | null) => {
+    manualModeRef.current = mode;
+  };
 
   const refreshProjectRuntimeState = async (targetProjectId: string) => {
     if (!userId || !targetProjectId) return;
@@ -48,8 +54,10 @@ function App() {
       ]);
       const state = agentRes.ok ? await agentRes.json() : { active_agent: 'master' };
       const contract = contractRes.ok ? await contractRes.json() : null;
-      const resolvedMode = resolveAgentMode(state, contract);
-      setAgentMode(resolvedMode);
+      // 手动锁定优先：后端每次 Sub 执行结束会强制把 active_agent 翻回 master，
+      // 若用户手动锁定了模式，前端必须无视该自动判定，保持用户选择。
+      const effectiveMode = manualModeRef.current ?? resolveAgentMode(state, contract);
+      setAgentMode(effectiveMode);
       if (contract) {
         setTaskContract(contract);
         if (rightPanel?.mode === 'tasks') {
@@ -57,7 +65,7 @@ function App() {
             mode: 'tasks',
             data: {
               contract,
-              agentMode: resolvedMode,
+              agentMode: effectiveMode,
               onDispatchToSub: handleDispatchToSub,
               onValidate: handleValidate,
             },
@@ -102,6 +110,8 @@ function App() {
         }
       );
       if (!res.ok) return false;
+      // 用户/流程显式切换即视为手动锁定，后续刷新不再被自动判定弹回。
+      lockManualMode(mode);
       setAgentMode(mode);
       if (rightPanel?.mode === 'tasks') {
         setRightPanel({
@@ -135,14 +145,14 @@ function App() {
       ]);
       const state = agentRes.ok ? await agentRes.json() : { active_agent: agentMode };
       const contract = contractRes.ok ? await contractRes.json() : taskContract;
-      const resolvedMode = resolveAgentMode(state, contract);
+      const effectiveMode = manualModeRef.current ?? resolveAgentMode(state, contract);
       setTaskContract(contract);
-      setAgentMode(resolvedMode);
+      setAgentMode(effectiveMode);
       setRightPanel({
         mode: 'tasks',
         data: {
           contract,
-          agentMode: resolvedMode,
+          agentMode: effectiveMode,
           onDispatchToSub: handleDispatchToSub,
           onValidate: handleValidate,
         },
@@ -227,12 +237,16 @@ function App() {
   };
 
   const handleProjectChange = (projectId: string) => {
+    // 切项目 = 全新上下文，解除手动锁定，模式回到自动判定。
+    lockManualMode(null);
     setCurrentProjectId(projectId);
     setCurrentSessionId(null);
     setSubDispatchSignal(0);
   };
 
   const handleSelectSession = (sessionId: string) => {
+    // 切/建会话 = 重新规划上下文，解除手动锁定后再按后端真实状态刷新。
+    lockManualMode(null);
     setCurrentSessionId(sessionId);
     setSubDispatchSignal(0);
     // 会话切换/新建时同步服务端运行时状态：

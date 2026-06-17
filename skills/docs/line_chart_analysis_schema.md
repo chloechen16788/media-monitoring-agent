@@ -40,6 +40,7 @@ python skills/es_agg_search.py "{\"uid\": \"<系统通知提供>\", \"task_ids\"
 
 - 趋势统计结果 → `[{"time": "2026-04-01", "value": 123}, ...]`，调用时传 `value_field: "value"`。
 - 情感/渠道趋势（嵌套聚合）→ 先扁平化为多线输入：`[{"time":"2026-04-01","value":123,"series":"负面"}, {"time":"2026-04-01","value":233,"series":"正面"}]`，并在渲染时传 `series_field: "series"`。
+- **系列名必须用中文名称，禁止用 ID**：取数结果已带好对照名称——情感用 `sentiment_name`、渠道用 `channel_name`（`trend_by_channel`/`trend_by_sentiment` 每个桶都同时给出 `*_id` 与 `*_name`）。扁平化时一律取 `*_name` 作为 `series`，**绝不能**把 `channel_id`/`sentiment_id` 这类数字当系列名，否则图例会显示成无意义的 ID。
 - 逐条舆情记录 → 直接传原始数组，指定 `time_field` 为发布时间字段名，不传 `value_field`（按条数计数）。
 
 ## Step 3: 渲染折线图
