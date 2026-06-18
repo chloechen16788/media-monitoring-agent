@@ -3,10 +3,10 @@ import urllib.request
 import urllib.error
 import traceback
 from datetime import datetime
+import sys
 
 ES_URL = "http://139.198.17.239:9203"
 # INDEX_NAME will be built dynamically using uid and partition
-
 
 def _month_of(time_str) -> str | None:
     """从时间字符串（YYYY-MM-DD ...）推导月份分区 YYYYMM。"""
@@ -43,6 +43,7 @@ def _resolve_content(source: dict) -> str:
         if isinstance(val, str) and val.strip():
             return val.strip()
     return ""
+
 
 def execute(params: dict) -> str:
     """
@@ -182,8 +183,8 @@ def execute(params: dict) -> str:
         err_msg = traceback.format_exc()
         return json.dumps({"error": f"ES抽样查询失败: {str(e)}", "details": err_msg})
 
-if __name__ == "__main__":
-    import sys
+
+def main():
     if len(sys.argv) > 1:
         try:
             params = json.loads(sys.argv[1])
@@ -192,3 +193,7 @@ if __name__ == "__main__":
             print(json.dumps({"error": f"Failed to parse JSON parameters: {str(e)}"}))
     else:
         print(json.dumps({"error": "Missing JSON parameters"}))
+
+
+if __name__ == "__main__":
+    main()

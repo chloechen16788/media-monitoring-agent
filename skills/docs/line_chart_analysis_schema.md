@@ -21,11 +21,11 @@
   - 按来源类型多线：`["trend_by_channel"]`
 
 ```text
-python skills/es_agg_search.py "{\"uid\": \"<系统通知提供>\", \"task_ids\": [6860], \"start_time\": \"2026-05-01 00:00:00\", \"end_time\": \"2026-05-31 23:59:59\", \"dimensions\": [\"trend\"]}"
+python skills/executor/es_agg_search.py "{\"uid\": \"<系统通知提供>\", \"task_ids\": [6860], \"start_time\": \"2026-05-01 00:00:00\", \"end_time\": \"2026-05-31 23:59:59\", \"dimensions\": [\"trend\"]}"
 ```
 
 ```text
-python skills/es_agg_search.py "{\"uid\": \"<系统通知提供>\", \"task_ids\": [6860], \"start_time\": \"2026-05-01 00:00:00\", \"end_time\": \"2026-05-31 23:59:59\", \"dimensions\": [\"trend_by_sentiment\"]}"
+python skills/executor/es_agg_search.py "{\"uid\": \"<系统通知提供>\", \"task_ids\": [6860], \"start_time\": \"2026-05-01 00:00:00\", \"end_time\": \"2026-05-31 23:59:59\", \"dimensions\": [\"trend_by_sentiment\"]}"
 ```
 
 - 若缺少 uid / task_ids / 时间范围，**停止执行并输出 `PARAM_REQUEST` 魔法码请求补参**，禁止编造。推荐字段：
@@ -65,7 +65,7 @@ python skills/executor/render_line_chart.py "{\"data\": [...], \"value_field\": 
 对 `peaks` 中选定系列的每个高点日期，**分别发起一条独立命令**抽取该日 Top10 去重（finger 指纹）热门文章。例如 3 个峰值就是 3 条命令：
 
 ```text
-python skills/es_sample_search.py "{\"uid\": \"<同上>\", \"partition\": \"<同上>\", \"task_ids\": [6860], \"start_time\": \"2026-04-12 00:00:00\", \"end_time\": \"2026-04-12 23:59:59\", \"size\": 10}"
+python skills/executor/es_sample_search.py "{\"uid\": \"<同上>\", \"partition\": \"<同上>\", \"task_ids\": [6860], \"start_time\": \"2026-04-12 00:00:00\", \"end_time\": \"2026-04-12 23:59:59\", \"size\": 10}"
 ```
 
 - 只做负面归因时，抽样可附加 `sentiment_filter: [-1]`，避免混入非负面样本。

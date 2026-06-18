@@ -57,18 +57,98 @@
       "type": "script",
       "role": "sub",
       "group": "executor",
-      "entry": "skills/es_agg_search.py",
+      "entry": "skills/executor/es_agg_search.py",
       "enabled": true,
-      "brief": "执行宏观数据统计与聚合。支持声量份额(sov)、趋势(trend)、渠道分布(channel)和情感(sentiment)等多维交叉统计。"
+      "brief": "执行宏观数据统计与聚合。支持声量份额/趋势/渠道/情感及实体、词频、分类标签占比与趋势等多维交叉统计。",
+      "env": ["SKILL_ES_URL"],
+      "input_schema": {
+        "type": "object",
+        "required": ["task_ids", "start_time", "end_time", "dimensions"],
+        "properties": {
+          "uid": {"type": ["string", "integer"]},
+          "partition": {"type": "string"},
+          "task_ids": {"type": "array", "items": {"type": "integer"}, "minItems": 1},
+          "start_time": {"type": "string"},
+          "end_time": {"type": "string"},
+          "dimensions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "sov",
+                "trend",
+                "channel",
+                "sentiment",
+                "sources",
+                "effect_metrics",
+                "trend_by_channel",
+                "trend_by_sentiment",
+                "prn_distribution",
+                "named_entities",
+                "keyword_freq",
+                "category",
+                "sub_category",
+                "tag",
+                "trend_by_category",
+                "trend_by_tag"
+              ]
+            },
+            "minItems": 1
+          },
+          "sentiment_filter": {"type": "array", "items": {"type": "integer"}}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "total_hits": {"type": "integer"},
+          "aggs": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"},
+          "details": {"type": "string"}
+        }
+      }
     },
     {
       "id": "es_sample_search",
       "type": "script",
       "role": "sub",
       "group": "executor",
-      "entry": "skills/es_sample_search.py",
+      "entry": "skills/executor/es_sample_search.py",
       "enabled": true,
-      "brief": "微观聚类抽样。基于相似度指纹(finger)获取特定任务下传播声量最大的、不重复的首发新闻与评论长文本，用于大模型归因分析。"
+      "brief": "微观聚类抽样。基于相似度指纹(finger)获取特定任务下传播声量最大的、不重复的首发新闻与评论长文本，用于大模型归因分析。",
+      "env": ["SKILL_ES_URL"],
+      "input_schema": {
+        "type": "object",
+        "required": ["task_ids", "start_time", "end_time"],
+        "properties": {
+          "uid": {"type": ["string", "integer"]},
+          "partition": {"type": "string"},
+          "task_ids": {"type": "array", "items": {"type": "integer"}, "minItems": 1},
+          "start_time": {"type": "string"},
+          "end_time": {"type": "string"},
+          "keywords": {"type": "string"},
+          "size": {"type": "integer", "minimum": 1},
+          "sentiment_filter": {"type": "integer"},
+          "channel_filter": {
+            "oneOf": [
+              {"type": "integer"},
+              {"type": "array", "items": {"type": "integer"}, "minItems": 1}
+            ]
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "status": {"type": "string"},
+          "extracted_count": {"type": "integer"},
+          "articles": {"type": "array", "items": {"type": "object"}},
+          "error": {"type": "string"},
+          "hint": {"type": "string"},
+          "details": {"type": "string"}
+        }
+      }
     },
     {
       "id": "web_search",

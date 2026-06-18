@@ -13,7 +13,7 @@
   },
   {
     "id": "es_agg_search",
-    "brief": "执行宏观数据统计与聚合。支持声量份额(sov)、趋势(trend)、渠道分布(channel)和情感(sentiment)等多维交叉统计。"
+    "brief": "执行宏观数据统计与聚合。支持声量份额/趋势/渠道/情感及实体、词频、分类标签占比与趋势等多维交叉统计。"
   },
   {
     "id": "es_sample_search",

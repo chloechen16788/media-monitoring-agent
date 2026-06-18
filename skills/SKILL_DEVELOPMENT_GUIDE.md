@@ -25,8 +25,12 @@
 1. 新建脚本（或文档）文件。
 2. 只改 `skills/registry.json` 增加条目。
 3. 若是 A 类脚本，再加 `skills/docs/<skill_id>.md`。
-4. 执行：
+4. 执行（并做“彻底迁移”验证）：
    - `python skills/sync_catalog.py`
+   - `python skills/get_skill_doc.py <skill_id>`（确认【脚本路径】已指向最终 `entry`）
+   - 直接按 `entry` 冒烟：`python <entry> "<合法JSON>"`（必须直连成功）
+   - **禁止代理壳写法**：`<entry>` 脚本内不得再 `import` / 转调旧路径脚本
+   - 迁移场景建议额外做一次“断壳校验”：临时改名旧脚本（如 `*-old.py`）后，`python <entry> ...` 仍应可执行
    - `cd gateway && node tests/skills_spec.test.mjs`
 
 只要第 4 步通过，三个文件不同步的问题就会被自动拦住。
@@ -157,6 +161,15 @@ stdout 只允许输出**一个 JSON 对象**，结构如下：
 
 - 工具只做纯粹的 I/O：查询、发送、抓取、计算。
 - **禁止**在脚本里硬编码业务映射（如"品牌名→task_id"的对照表）、流程编排、意图判断。这些属于模型（配合 B 类文档）的职责。
+
+### 3.5 迁移约束：禁止“代理壳”迁移（强制）
+
+- 当技能从 `skills/` 根目录迁移到 `skills/executor/` 或 `skills/planner/` 时，`entry` 指向的新脚本必须是**完整实现**，而不是“薄壳转发”。
+- 明确禁止以下写法：
+  - 在新 `entry` 脚本中用 `importlib` / `subprocess` 去加载旧路径脚本（如 `skills/<skill_id>.py`）
+  - 新脚本只做参数透传，再调用旧脚本 `execute()`
+- 允许保留旧文件作为备份（如 `*-old.py`），但新 `entry` 不得依赖它；否则旧文件一旦重命名/删除就会出现“路径正确但执行失败”的假迁移。
+- 验收标准：以 `registry.entry` 为唯一执行入口，断开旧文件后（临时改名）仍可正常执行。
 
 ## 4. B 类技能（编排说明文档 Markdown）开发规范
 

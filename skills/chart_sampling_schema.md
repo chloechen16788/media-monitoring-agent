@@ -5,7 +5,7 @@
 
 ## 注意：你的可用工具
 你手上**唯一**可用的物理抽样工具是 `es_sample_search.py`，它只能接受基本的时间段、关键词和情感过滤。
-**因此，对于复杂的抽样逻辑（如“每时间段每组抽1篇”），你必须在脑海中自行切分时间段或查询条件，然后“逐次发起多条独立的 python 命令”分别调用 `es_sample_search.py`（每条命令形如 `["python", "skills/es_sample_search.py", "<JSON参数>"]`），最后整合所有返回结果！**
+**因此，对于复杂的抽样逻辑（如“每时间段每组抽1篇”），你必须在脑海中自行切分时间段或查询条件，然后“逐次发起多条独立的 python 命令”分别调用 `es_sample_search.py`（每条命令形如 `["python", "skills/executor/es_sample_search.py", "<JSON参数>"]`），最后整合所有返回结果！**
 
 **【沙箱限制警告】**：企业沙箱只放行单条 `python skills/*.py` 命令。**绝对禁止**使用 bash for 循环、管道（`|`）、命令串联（`&&`/`;`）或 `bash -c`——这些一律会被拦截并返回 Permission Denied。需要 N 次抽样，就老老实实发 N 条独立命令。
 

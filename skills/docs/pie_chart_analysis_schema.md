@@ -21,7 +21,7 @@
 | 媒体来源 Top N | `["sources"]` | `aggs.sources[tid]` → `[{media_name, doc_count, total_prn}]` |
 
 ```text
-python skills/es_agg_search.py "{\"uid\": \"<系统通知提供>\", \"task_ids\": [6860], \"start_time\": \"2026-05-01 00:00:00\", \"end_time\": \"2026-05-31 23:59:59\", \"dimensions\": [\"sentiment\"]}"
+python skills/executor/es_agg_search.py "{\"uid\": \"<系统通知提供>\", \"task_ids\": [6860], \"start_time\": \"2026-05-01 00:00:00\", \"end_time\": \"2026-05-31 23:59:59\", \"dimensions\": [\"sentiment\"]}"
 ```
 
 - 若缺少 uid / task_ids / 时间范围，**停止执行并输出 `PARAM_REQUEST` 魔法码请求补参**，禁止编造。推荐字段：
@@ -74,11 +74,11 @@ python skills/executor/render_pie_chart.py "{\"data\": [...], \"name_field\": \"
 3 个切片各一条命令，时间范围与 Step 1 保持一致：
 
 ```text
-python skills/es_sample_search.py "{\"uid\": \"<同上>\", \"task_ids\": [6860], \"start_time\": \"2026-05-01 00:00:00\", \"end_time\": \"2026-05-31 23:59:59\", \"size\": 10, \"sentiment_filter\": -1}"
+python skills/executor/es_sample_search.py "{\"uid\": \"<同上>\", \"task_ids\": [6860], \"start_time\": \"2026-05-01 00:00:00\", \"end_time\": \"2026-05-31 23:59:59\", \"size\": 10, \"sentiment_filter\": -1}"
 ```
 
 ```text
-python skills/es_sample_search.py "{\"uid\": \"<同上>\", \"task_ids\": [6860], \"start_time\": \"2026-05-01 00:00:00\", \"end_time\": \"2026-05-31 23:59:59\", \"size\": 10, \"channel_filter\": 108}"
+python skills/executor/es_sample_search.py "{\"uid\": \"<同上>\", \"task_ids\": [6860], \"start_time\": \"2026-05-01 00:00:00\", \"end_time\": \"2026-05-31 23:59:59\", \"size\": 10, \"channel_filter\": 108}"
 ```
 
 ## Step 5: 总结输出
