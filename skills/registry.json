@@ -95,7 +95,8 @@
             },
             "minItems": 1
           },
-          "sentiment_filter": {"type": "array", "items": {"type": "integer"}}
+          "sentiment_filter": {"type": "array", "items": {"type": "integer"}},
+          "entity_top_n": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10}
         }
       },
       "output_schema": {
@@ -276,6 +277,94 @@
       "entry": "skills/docs/pie_chart_analysis_schema.md",
       "enabled": true,
       "brief": "【说明书】饼图/环形图分析全流程：es_agg_search 取分布数据（sentiment/channel/sov/sources）→ render_pie_chart 渲染 → 按切片类型用 es_sample_search 抽样归因（情感用 sentiment_filter，渠道用 channel_filter，SOV 用单 task_id）。"
+    },
+    {
+      "id": "render_bar_chart",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/executor/render_bar_chart.py",
+      "enabled": true,
+      "brief": "将统计数据渲染为 ECharts 条形图配置：支持横向/纵向、TopN 截断、主题样式与数值标签，并返回 TopN 条目供抽样归因。",
+      "input_schema": {
+        "type": "object",
+        "required": ["data"],
+        "properties": {
+          "data": {"type": "array", "items": {"type": "object"}},
+          "name_field": {"type": "string", "default": "name"},
+          "value_field": {"type": "string", "default": "value"},
+          "title": {"type": "string"},
+          "subtitle": {"type": "string"},
+          "top_n": {"type": "integer", "minimum": 1, "default": 10},
+          "orientation": {"type": "string", "enum": ["horizontal", "vertical"], "default": "horizontal"},
+          "sort_order": {"type": "string", "enum": ["desc", "asc"], "default": "desc"},
+          "show_value_label": {"type": "boolean", "default": true},
+          "unit": {"type": "string"},
+          "theme": {"type": "string", "enum": ["default", "dark"], "default": "default"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "bar_chart_analysis",
+      "type": "doc",
+      "group": "doc",
+      "entry": "skills/docs/bar_chart_analysis_schema.md",
+      "enabled": true,
+      "brief": "【说明书】条形图分析全流程：es_agg_search 取排行数据（实体/关键词/渠道/媒体/分类/标签）→ render_bar_chart 渲染 → es_sample_search 对 TopN 条目抽样归因。"
+    },
+    {
+      "id": "render_word_cloud",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/executor/render_word_cloud.py",
+      "enabled": true,
+      "brief": "将词频/实体统计数据渲染为 ECharts 词云图：按词频对数缩放字号、多色主题、支持 TopN 截断，返回 Top10 词条供抽样归因。",
+      "input_schema": {
+        "type": "object",
+        "required": ["data"],
+        "properties": {
+          "data": {"type": "array", "items": {"type": "object"}},
+          "name_field": {"type": "string", "default": "name"},
+          "value_field": {"type": "string", "default": "value"},
+          "title": {"type": "string"},
+          "subtitle": {"type": "string"},
+          "top_n": {"type": "integer", "minimum": 1, "maximum": 500, "default": 100},
+          "top_items_n": {"type": "integer", "minimum": 1, "default": 10},
+          "shape": {"type": "string", "enum": ["circle", "diamond", "pentagon", "star", "triangle", "cardioid"], "default": "circle"},
+          "min_font_size": {"type": "integer", "minimum": 8, "default": 14},
+          "max_font_size": {"type": "integer", "minimum": 20, "default": 72},
+          "theme": {"type": "string", "enum": ["default", "dark"], "default": "default"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "word_cloud_analysis",
+      "type": "doc",
+      "group": "doc",
+      "entry": "skills/docs/word_cloud_analysis_schema.md",
+      "enabled": true,
+      "brief": "【说明书】词云分析全流程：es_agg_search 取词频/实体数据（keyword_freq/named_entities）→ render_word_cloud 渲染词云 → es_sample_search 对 Top10 词条抽样归因。"
     },
     {
       "id": "advanced_chart_sampling",

@@ -208,5 +208,53 @@ export function sanitizeAssistantMessage(
 export function sanitizeMessagesForApi(
   messages: Array<ChatCompletionMessageParam>,
 ): Array<ChatCompletionMessageParam> {
-  return messages.map((message) => sanitizeAssistantMessage(message));
+  // Pass 1: collect tool_call_ids declared by assistant messages
+  const declaredToolCallIds = new Set<string>();
+  for (const msg of messages) {
+    if (msg.role === "assistant" && "tool_calls" in msg && msg.tool_calls) {
+      for (const tc of msg.tool_calls) {
+        if (tc.id) declaredToolCallIds.add(tc.id);
+      }
+    }
+  }
+
+  // Pass 2: collect tool_call_ids that have been resolved by tool result messages
+  const resolvedToolCallIds = new Set<string>();
+  for (const msg of messages) {
+    if (msg.role === "tool" && "tool_call_id" in msg && msg.tool_call_id) {
+      resolvedToolCallIds.add(msg.tool_call_id);
+    }
+  }
+
+  // Pass 3: filter — remove orphaned tool results and dangling tool_calls
+  const output: Array<ChatCompletionMessageParam> = [];
+  for (const msg of messages) {
+    // Drop tool results whose matching tool_call was never declared
+    if (msg.role === "tool") {
+      const tcId = (msg as { tool_call_id?: string }).tool_call_id ?? "";
+      if (!declaredToolCallIds.has(tcId)) continue;
+    }
+
+    if (msg.role === "assistant" && "tool_calls" in msg && msg.tool_calls) {
+      // Keep only tool_calls that actually have a result message
+      const fulfilledCalls = msg.tool_calls.filter(
+        (tc) => tc.id && resolvedToolCallIds.has(tc.id),
+      );
+      if (fulfilledCalls.length !== msg.tool_calls.length) {
+        if (fulfilledCalls.length === 0) {
+          // All tool_calls are unresolved — keep as plain text if there is content,
+          // otherwise drop the message entirely to avoid a dangling tool_call block
+          const content = (msg as { content?: string | null }).content;
+          if (!content) continue;
+          output.push(sanitizeAssistantMessage({ ...msg, tool_calls: undefined } as ChatCompletionMessageParam));
+          continue;
+        }
+        output.push(sanitizeAssistantMessage({ ...msg, tool_calls: fulfilledCalls }));
+        continue;
+      }
+    }
+
+    output.push(sanitizeAssistantMessage(msg));
+  }
+  return output;
 }

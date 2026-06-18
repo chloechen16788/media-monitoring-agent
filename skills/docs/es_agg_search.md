@@ -9,12 +9,16 @@
  - dimensions (必需): 字符串数组，可填：
    ["sov", "trend", "channel", "sentiment", "sources", "effect_metrics", "trend_by_channel", "trend_by_sentiment", "prn_distribution", "named_entities", "keyword_freq", "category", "sub_category", "tag", "trend_by_category", "trend_by_tag"]，获取所需维度数据。
   - sentiment_filter (可选): 情感过滤数组，如 [-1]（仅负面）、[0,1]（仅正+中）。适用于所有维度，常用于“负面趋势线”场景。
+  - entity_top_n (可选): 当 dimensions 含 `named_entities` 时，每种实体类型（PERSON/ORGANIZATION/LOCATION）返回的 TopN 数量，默认 10，最大 50。全局混合 Top 列表也会至少返回该数量（上限 20 与 entity_top_n 取较大值）。
 【返回格式】: JSON 格式的数据统计结果。
 
 【新增维度说明】:
   - trend_by_sentiment: 返回按天聚合、再按情感拆分的趋势结果。可直接用于绘制“正/中/负三条线”。
   - trend_by_channel: 返回按天聚合、再按渠道拆分的趋势结果（日期格式统一为 "yyyy-MM-dd"，便于与其他 trend 结果直接对齐）。
-  - named_entities: NER 统计，返回每个 task 的实体总数 (`total_entities`)、唯一实体数 (`unique_entity_count`) 和 Top 实体列表。该维度仅统计 `sentimentList.algorithm` 包含 `8` 的文档。
+  - named_entities: NER 统计，返回每个 task 的实体总数 (`total_entities`)、唯一实体数 (`unique_entity_count`)、全局混合 Top 实体列表 (`top_entities`)，以及**按实体类型分组的 TopN** (`top_entities_by_type`)。该维度仅统计 `sentimentList.algorithm` 包含 `8` 的文档。
+    - `top_entities_by_type` 键为规范化类型：`PERSON`（人名）、`ORGANIZATION`（机构，含 `ORGGANIZATION` 拼写变体）、`LOCATION`（地名）、`UNKNOWN`（空类型）。
+    - 每项结构：`{entity_type, entity_type_label, items: [{entity_name, doc_count}]}`，可直接驱动 `render_bar_chart` 分别出三张图。
+    - 示例取数：`dimensions: ["named_entities"], entity_top_n: 10`
   - keyword_freq: 词频统计，基于 `messageContentNLPFreq`（nested），返回关键词总出现次数、唯一关键词数、Top 关键词（按 `count` 求和排序）。
   - category: 分类占比，按 `catId` 聚合。该维度仅统计 `sentimentList.algorithm` 包含 `7` 的文档。
   - sub_category: 子分类占比，按 `subCatId` 聚合。该维度仅统计 `sentimentList.algorithm` 包含 `7` 的文档。

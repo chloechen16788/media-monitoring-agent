@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import ReactECharts from 'echarts-for-react';
 import { jsonrepair } from 'jsonrepair';
+import 'echarts-wordcloud';
 import styles from './MessageRenderer.module.css';
 
 interface MessageRendererProps {
@@ -247,9 +248,23 @@ ${slotsContext}
           </div>
         );
       }
+      // 横向条形图：按条目数动态拉高，每条留 44px + 标题/坐标区 160px
+      const isHorizontalBar =
+        option.series?.[0]?.type === 'bar' &&
+        (Array.isArray(option.yAxis)
+          ? option.yAxis[0]?.type === 'category'
+          : option.yAxis?.type === 'category');
+      const itemCount: number = isHorizontalBar
+        ? (Array.isArray(option.yAxis)
+            ? option.yAxis[0]?.data?.length
+            : option.yAxis?.data?.length) ?? 0
+        : 0;
+      const chartHeight = isHorizontalBar
+        ? Math.max(360, itemCount * 44 + 160)
+        : 360;
       return (
         <div key={`chart-${i}`} className={styles.chartBlock}>
-          <ReactECharts option={option} style={{ height: 360, width: '100%' }} notMerge lazyUpdate />
+          <ReactECharts option={option} style={{ height: chartHeight, width: '100%' }} notMerge lazyUpdate />
         </div>
       );
     });

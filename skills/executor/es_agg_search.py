@@ -20,6 +20,46 @@ DATA_CHANNEL_MAP = {
     51: "微博原帖", 95: "搜索引擎", 0: "未知",
 }
 
+ENTITY_TYPE_NORMALIZE = {
+    "ORGGANIZATION": "ORGANIZATION",
+}
+
+ENTITY_TYPE_LABELS = {
+    "PERSON": "人名",
+    "ORGANIZATION": "机构",
+    "LOCATION": "地名",
+    "UNKNOWN": "未知类型",
+}
+
+
+def normalize_entity_type(raw) -> str:
+    key = str(raw or "").strip().upper()
+    if not key:
+        return "UNKNOWN"
+    return ENTITY_TYPE_NORMALIZE.get(key, key)
+
+
+def merge_top_entities_by_type(buckets: list, entity_top_n: int) -> dict:
+    """合并同类型（含 ORGGANIZATION 拼写变体）的 Top 实体并截断。"""
+    merged: dict[str, dict[str, int]] = {}
+    for bucket in buckets:
+        norm_type = normalize_entity_type(bucket.get("key"))
+        merged.setdefault(norm_type, {})
+        for entity in bucket.get("top_entities", {}).get("buckets", []):
+            name = entity["key"]
+            merged[norm_type][name] = merged[norm_type].get(name, 0) + entity["doc_count"]
+
+    result = {}
+    for entity_type, name_counts in merged.items():
+        items = [{"entity_name": name, "doc_count": count} for name, count in name_counts.items()]
+        items.sort(key=lambda x: x["doc_count"], reverse=True)
+        result[entity_type] = {
+            "entity_type": entity_type,
+            "entity_type_label": ENTITY_TYPE_LABELS.get(entity_type, entity_type),
+            "items": items[:entity_top_n],
+        }
+    return result
+
 
 def _month_of(time_str) -> str | None:
     try:
@@ -60,6 +100,11 @@ def execute(params: dict) -> str:
     end_time = params.get("end_time")
     dimensions = params.get("dimensions", ["sov"])
     sentiment_filter = params.get("sentiment_filter")
+    try:
+        entity_top_n = int(params.get("entity_top_n") or 10)
+    except (TypeError, ValueError):
+        return json.dumps({"error": "entity_top_n 必须是整数。"})
+    entity_top_n = max(1, min(entity_top_n, 50))
 
     if not task_ids or not start_time or not end_time:
         return json.dumps({"error": "缺少必要的参数: task_ids, start_time, end_time"})
@@ -170,8 +215,16 @@ def execute(params: dict) -> str:
                                 "nested": {"path": "namedEntityList"},
                                 "aggs": {
                                     "unique_entity_count": {"cardinality": {"field": "namedEntityList.entityName"}},
-                                    "top_entities": {"terms": {"field": "namedEntityList.entityName", "size": 20}},
+                                    "top_entities": {"terms": {"field": "namedEntityList.entityName", "size": max(entity_top_n, 20)}},
                                     "entity_type_distribution": {"terms": {"field": "namedEntityList.entityType", "size": 10}},
+                                    "by_entity_type": {
+                                        "terms": {"field": "namedEntityList.entityType", "size": 10},
+                                        "aggs": {
+                                            "top_entities": {
+                                                "terms": {"field": "namedEntityList.entityName", "size": entity_top_n},
+                                            }
+                                        },
+                                    },
                                 },
                             }
                         },
@@ -322,12 +375,28 @@ def execute(params: dict) -> str:
             for t in es_aggs["entity_agg"].get("buckets", []):
                 ai_scope = t.get("ai_scope", {})
                 en = ai_scope.get("entities_nested", {})
+                by_type = merge_top_entities_by_type(
+                    en.get("by_entity_type", {}).get("buckets", []),
+                    entity_top_n,
+                )
+                type_distribution = {}
+                for e in en.get("entity_type_distribution", {}).get("buckets", []):
+                    norm_type = normalize_entity_type(e["key"])
+                    type_distribution[norm_type] = type_distribution.get(norm_type, 0) + e["doc_count"]
                 data_map[t["key"]] = {
                     "ai_doc_count": ai_scope.get("doc_count", 0),
                     "total_entities": en.get("doc_count", 0),
                     "unique_entity_count": en.get("unique_entity_count", {}).get("value", 0),
                     "top_entities": [{"entity_name": e["key"], "doc_count": e["doc_count"]} for e in en.get("top_entities", {}).get("buckets", [])],
-                    "entity_type_distribution": [{"entity_type": e["key"], "doc_count": e["doc_count"]} for e in en.get("entity_type_distribution", {}).get("buckets", [])],
+                    "entity_type_distribution": [
+                        {
+                            "entity_type": entity_type,
+                            "entity_type_label": ENTITY_TYPE_LABELS.get(entity_type, entity_type),
+                            "doc_count": doc_count,
+                        }
+                        for entity_type, doc_count in sorted(type_distribution.items(), key=lambda x: x[1], reverse=True)
+                    ],
+                    "top_entities_by_type": by_type,
                 }
             result["aggs"]["named_entities"] = data_map
         if "keyword_agg" in es_aggs:
