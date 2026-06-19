@@ -14,11 +14,35 @@ SENTIMENT_MAP = {
 }
 
 DATA_CHANNEL_MAP = {
+    # 星光编码
     105: "网媒资讯", 106: "论坛", 107: "博客", 108: "微博",
     109: "平媒", 110: "微信", 111: "视频", 112: "资讯APP",
     113: "论坛评论", 114: "长微博", 121: "短视频",
     51: "微博原帖", 95: "搜索引擎", 0: "未知",
+    # 清博编码（兼容 int 与字符串零填充）
+    1: "新闻", 2: "论坛", 3: "博客", 4: "微博", 5: "平媒",
+    6: "微信", 7: "视频", 8: "长微博", 9: "APP", 10: "评论",
+    11: "短视频", 99: "搜索引擎",
+    "01": "新闻", "02": "论坛", "03": "博客", "04": "微博", "05": "平媒",
+    "06": "微信", "07": "视频", "08": "长微博", "09": "APP", "10": "评论",
+    "11": "短视频", "99": "搜索引擎",
 }
+
+
+def resolve_channel_name(channel_id) -> str:
+    if channel_id in DATA_CHANNEL_MAP:
+        return DATA_CHANNEL_MAP[channel_id]
+    key = str(channel_id).strip()
+    if key in DATA_CHANNEL_MAP:
+        return DATA_CHANNEL_MAP[key]
+    if key.isdigit():
+        numeric = int(key)
+        if numeric in DATA_CHANNEL_MAP:
+            return DATA_CHANNEL_MAP[numeric]
+        key2 = f"{numeric:02d}"
+        if key2 in DATA_CHANNEL_MAP:
+            return DATA_CHANNEL_MAP[key2]
+    return f"未知渠道({channel_id})"
 
 ENTITY_TYPE_NORMALIZE = {
     "ORGGANIZATION": "ORGANIZATION",
@@ -322,7 +346,7 @@ def execute(params: dict) -> str:
             channel_data = {}
             for t in es_aggs["channel_agg"].get("buckets", []):
                 channel_data[t["key"]] = [
-                    {"channel_id": c["key"], "channel_name": DATA_CHANNEL_MAP.get(c["key"], f"未知渠道({c['key']})"), "doc_count": c["doc_count"]}
+                    {"channel_id": c["key"], "channel_name": resolve_channel_name(c["key"]), "doc_count": c["doc_count"]}
                     for c in t.get("channels", {}).get("buckets", [])
                 ]
             result["aggs"]["channel"] = channel_data
@@ -350,7 +374,7 @@ def execute(params: dict) -> str:
                     days.append({
                         "date": d["key_as_string"],
                         "channels": [
-                            {"channel_id": c["key"], "channel_name": DATA_CHANNEL_MAP.get(c["key"], f"未知渠道({c['key']})"), "doc_count": c["doc_count"]}
+                            {"channel_id": c["key"], "channel_name": resolve_channel_name(c["key"]), "doc_count": c["doc_count"]}
                             for c in d.get("by_channel", {}).get("buckets", [])
                         ],
                     })

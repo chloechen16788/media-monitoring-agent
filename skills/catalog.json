@@ -20,6 +20,22 @@
     "brief": "微观聚类抽样。基于相似度指纹(finger)获取特定任务下传播声量最大的、不重复的首发新闻与评论长文本，用于大模型归因分析。"
   },
   {
+    "id": "export_es_sample_excel",
+    "brief": "将 es_sample_search 抽样结果或标注后 JSONL 导出为 Excel（xlsx），保留全部字段并返回下载路径。"
+  },
+  {
+    "id": "es_export_jsonl_batches",
+    "brief": "将 ES 抽样结果按批切分为 JSONL 并生成 manifest，支撑分批标注流转。"
+  },
+  {
+    "id": "bmw_tag_jsonl",
+    "brief": "读取 JSONL 调用标注模型(默认Gemini原生API,可扩展gateway/local)做 BMW 硬核科技新闻标注，写回 annotated JSONL。"
+  },
+  {
+    "id": "bmw_tagging",
+    "brief": "【说明书】BMW 数据标注全流程：es_sample_search 取数(含blurb/正文) → es_export_jsonl_batches 切批 JSONL → bmw_tag_jsonl 逐批调模型标注 → export_es_sample_excel 合并导出 Excel。"
+  },
+  {
     "id": "web_search",
     "brief": "浅度联网搜索：查询互联网上的实时信息、新闻、百科等外部客观事实，返回摘要结果。"
   },

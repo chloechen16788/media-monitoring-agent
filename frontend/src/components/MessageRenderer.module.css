@@ -47,29 +47,156 @@
 
 .markdownBlock {
   color: var(--text-primary);
+  line-height: 1.7;
+  font-size: 14px;
 }
 
+/* ── 标题 ── */
+.markdownBlock h1,
+.markdownBlock h2,
+.markdownBlock h3,
+.markdownBlock h4,
+.markdownBlock h5,
+.markdownBlock h6 {
+  margin-top: 20px;
+  margin-bottom: 6px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+.markdownBlock h1 { font-size: 18px; }
+.markdownBlock h2 { font-size: 16px; padding-bottom: 5px; border-bottom: 1px solid var(--border-color); }
+.markdownBlock h3 { font-size: 15px; }
+.markdownBlock h4,
+.markdownBlock h5,
+.markdownBlock h6 { font-size: 14px; }
+/* 首个标题不加顶边距 */
+.markdownBlock > :first-child { margin-top: 0 !important; }
+
+/* ── 段落 ── */
 .markdownBlock p {
-  margin-bottom: 8px;
+  margin-top: 0;
+  margin-bottom: 10px;
+  line-height: 1.75;
 }
 
+/* ── 列表（含嵌套）── */
+.markdownBlock ul,
+.markdownBlock ol {
+  padding-left: 22px;
+  margin-top: 4px;
+  margin-bottom: 12px;
+}
+.markdownBlock li {
+  margin-bottom: 5px;
+  line-height: 1.65;
+}
+/* 嵌套列表：缩进 + 收紧边距 */
+.markdownBlock ul ul,
+.markdownBlock ol ol,
+.markdownBlock ul ol,
+.markdownBlock ol ul {
+  padding-left: 18px;
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+.markdownBlock ul ul li,
+.markdownBlock ol ol li,
+.markdownBlock ul ol li,
+.markdownBlock ol ul li {
+  margin-bottom: 3px;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+}
+/* 三级嵌套 */
+.markdownBlock ul ul ul,
+.markdownBlock ol ol ol {
+  padding-left: 14px;
+}
+
+/* ── 水平分割线：轻量化 ── */
+.markdownBlock hr {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 16px 0;
+  opacity: 0.55;
+}
+
+/* ── 表格 ── */
+.markdownBlock table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 14px;
+  font-size: 13.5px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #e8e8e8;
+}
+.markdownBlock thead tr {
+  background-color: #f5f6f7;
+}
+.markdownBlock th {
+  font-weight: 600;
+  padding: 8px 12px;
+  text-align: left;
+  border: 1px solid #e4e6e8;
+  color: #444;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.markdownBlock td {
+  padding: 7px 12px;
+  border: 1px solid #e4e6e8;
+  vertical-align: top;
+  line-height: 1.55;
+}
+.markdownBlock tbody tr:nth-child(even) td {
+  background-color: #fafafa;
+}
+.markdownBlock tbody tr:hover td {
+  background-color: #f0f4ff;
+}
+
+/* ── 引用块 ── */
+.markdownBlock blockquote {
+  border-left: 3px solid #d0d0d0;
+  padding: 4px 0 4px 14px;
+  margin: 8px 0 10px;
+  color: var(--text-secondary);
+  font-style: normal;
+}
+
+/* ── 强调 ── */
+.markdownBlock strong {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.markdownBlock em {
+  color: var(--text-secondary);
+}
+
+/* ── 代码块 ── */
 .markdownBlock pre {
   background-color: var(--bg-sidebar);
   padding: 12px;
   border-radius: 8px;
   overflow-x: auto;
-  margin-bottom: 8px;
+  margin: 4px 0 12px;
   white-space: pre-wrap;
   word-wrap: break-word;
+  border: 1px solid var(--border-color);
+  font-size: 13px;
 }
 
 .markdownBlock code {
-  font-family: monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   background-color: var(--bg-sidebar);
-  padding: 2px 4px;
+  padding: 2px 5px;
   border-radius: 4px;
+  font-size: 12.5px;
   white-space: pre-wrap;
   word-break: break-all;
+  border: 1px solid var(--border-color);
 }
 
 .thinkContent pre {

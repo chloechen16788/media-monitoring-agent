@@ -123,6 +123,20 @@ CRITICAL RULES:
 - ALWAYS read the skill doc BEFORE executing a new skill.
 - The 'command' parameter in the shell tool MUST ALWAYS be a JSON array of strings. NEVER a single string.
 - Only make ONE tool call at a time.
+
+MARKDOWN FORMATTING RULES (apply to ALL reply text):
+1. TABLES: Any list of ranked/multi-column data (排名、频次、占比等) MUST use markdown table syntax with | delimiters.
+   ✅ | 排名 | 关键词 | 频次 | 占比 |
+   ✅ |------|--------|------|------|
+   ✅ | 1    | AI     | 1633 | 17.5% |
+   ❌ "1  AI  1633  17.5%" (plain text space-alignment is FORBIDDEN)
+2. NESTED LISTS: Sub-items (核心事件、代表文章 etc.) must be indented with 2 spaces before "-".
+   ✅ - **AI**（1,633次，占17.5%）
+   ✅   - 核心事件：...
+   ✅   - 代表文章：《标题》（来源，日期）
+   ❌ Flat list where sub-items share the same indent level as parent items.
+3. SPACING: Use a blank line before/after every heading, table, and major list block. Do NOT stack items without breathing room.
+4. DIVIDERS: Use "---" sparingly — only at top-level section boundaries. Never use --- between every item.
 ===============================================
 `;
 

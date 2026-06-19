@@ -15,6 +15,9 @@
 【新增维度说明】:
   - trend_by_sentiment: 返回按天聚合、再按情感拆分的趋势结果。可直接用于绘制“正/中/负三条线”。
   - trend_by_channel: 返回按天聚合、再按渠道拆分的趋势结果（日期格式统一为 "yyyy-MM-dd"，便于与其他 trend 结果直接对齐）。
+  - channel / trend_by_channel 的 `channel_name` 已兼容两套渠道编码映射：
+    - 星光：105 网媒资讯、106 论坛、107 博客、108 微博、109 平媒、110 微信、111 视频、112 资讯APP、113 论坛评论、114 长微博、121 短视频、95 搜索引擎等。
+    - 清博：01 新闻、02 论坛、03 博客、04 微博、05 平媒、06 微信、07 视频、08 长微博、09 APP、10 评论、11 短视频、99 搜索引擎。
   - named_entities: NER 统计，返回每个 task 的实体总数 (`total_entities`)、唯一实体数 (`unique_entity_count`)、全局混合 Top 实体列表 (`top_entities`)，以及**按实体类型分组的 TopN** (`top_entities_by_type`)。该维度仅统计 `sentimentList.algorithm` 包含 `8` 的文档。
     - `top_entities_by_type` 键为规范化类型：`PERSON`（人名）、`ORGANIZATION`（机构，含 `ORGGANIZATION` 拼写变体）、`LOCATION`（地名）、`UNKNOWN`（空类型）。
     - 每项结构：`{entity_type, entity_type_label, items: [{entity_name, doc_count}]}`，可直接驱动 `render_bar_chart` 分别出三张图。

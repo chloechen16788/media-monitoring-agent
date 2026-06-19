@@ -130,6 +130,7 @@
           "end_time": {"type": "string"},
           "keywords": {"type": "string"},
           "size": {"type": "integer", "minimum": 1},
+          "content_max_chars": {"type": "integer", "minimum": 0, "default": 1500},
           "sentiment_filter": {"type": "integer"},
           "channel_filter": {
             "oneOf": [
@@ -150,6 +151,116 @@
           "details": {"type": "string"}
         }
       }
+    },
+    {
+      "id": "export_es_sample_excel",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/executor/export_es_sample_excel.py",
+      "enabled": true,
+      "brief": "将 es_sample_search 抽样结果或标注后 JSONL 导出为 Excel（xlsx），保留全部字段并返回下载路径。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "articles": {"type": "array", "items": {"type": "object"}},
+          "sample_output": {"type": "object"},
+          "es_sample_output": {"type": "object"},
+          "input_jsonl_dir": {"type": "string"},
+          "input_jsonl": {"type": "string"},
+          "report_name": {"type": "string"},
+          "filename": {"type": "string"},
+          "export_dir": {"type": "string", "default": "./workspace"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "es_export_jsonl_batches",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/executor/es_export_jsonl_batches.py",
+      "enabled": true,
+      "brief": "将 ES 抽样结果按批切分为 JSONL 并生成 manifest，支撑分批标注流转。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "articles": {"type": "array", "items": {"type": "object"}},
+          "sample_output": {"type": "object"},
+          "es_sample_output": {"type": "object"},
+          "run_id": {"type": "string"},
+          "batch_size": {"type": "integer", "minimum": 1, "default": 1000},
+          "export_dir": {"type": "string", "default": "./workspace"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "bmw_tag_jsonl",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/executor/bmw_tag_jsonl.py",
+      "enabled": true,
+      "env": ["SKILL_TAGGING_API_KEY", "SKILL_TAGGING_BASE_URL", "SKILL_TAGGING_MODEL", "SKILL_TAGGING_PROXY"],
+      "brief": "读取 JSONL 调用标注模型(默认Gemini原生API,可扩展gateway/local)做 BMW 硬核科技新闻标注，写回 annotated JSONL。",
+      "input_schema": {
+        "type": "object",
+        "required": ["input_jsonl", "output_jsonl"],
+        "properties": {
+          "input_jsonl": {"type": "string"},
+          "output_jsonl": {"type": "string"},
+          "title_field": {"type": "string", "default": "title"},
+          "input_text_mode": {"type": "string", "enum": ["blurb", "content"], "default": "blurb"},
+          "blurb_field": {"type": "string", "default": "blurb"},
+          "content_field": {"type": "string", "default": "content_snippet"},
+          "content_max_chars": {"type": "integer", "minimum": 0, "default": 2000},
+          "provider": {"type": "string", "enum": ["gemini", "gateway", "local"], "default": "gemini"},
+          "max_workers": {"type": "integer", "minimum": 1, "maximum": 64, "default": 16},
+          "max_records": {"type": "integer", "minimum": 1, "default": 1500},
+          "progress_file": {"type": "string"},
+          "manifest_path": {"type": "string"},
+          "batch_id": {"type": "integer"},
+          "prompt_override": {"type": "string"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "bmw_tagging",
+      "type": "doc",
+      "group": "doc",
+      "entry": "skills/docs/bmw_tagging_schema.md",
+      "enabled": true,
+      "brief": "【说明书】BMW 数据标注全流程：es_sample_search 取数(含blurb/正文) → es_export_jsonl_batches 切批 JSONL → bmw_tag_jsonl 逐批调模型标注 → export_es_sample_excel 合并导出 Excel。"
     },
     {
       "id": "web_search",

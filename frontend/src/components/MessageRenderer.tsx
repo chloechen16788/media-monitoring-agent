@@ -38,14 +38,15 @@ export default function MessageRenderer({ content, onShowCitation, onOpenWorkspa
   // Remove workspace tags from rendered markdown
   processedContent = processedContent.replace(workspaceRegex, '');
 
-  // 提取单图渲染魔法码（render_line_chart 输出的 chart_block），在聊天内直接渲染
-  const chartMatches: string[] = [];
-  let cMatch;
-  while ((cMatch = chartRegex.exec(magicSource)) !== null) {
-    chartMatches.push(cMatch[1]);
-  }
-  processedContent = processedContent.replace(chartRegex, '');
-  // 流式输出中未闭合的图表块（仅看正文，忽略过程块里的字面提及）：隐藏原始 JSON，显示占位提示
+  // 提取单图渲染魔法码，并用占位符原位保留位置（保证图文穿插）
+  const CHART_PH = '__ECHARTS_INLINE_CHART_';
+  const chartPayloads: string[] = [];
+  processedContent = processedContent.replace(chartRegex, (_match, raw) => {
+    const idx = chartPayloads.length;
+    chartPayloads.push(raw);
+    return `\n${CHART_PH}${idx}__\n`;
+  });
+  // 流式输出中未闭合的图表块：显示占位提示
   if (magicSource.replace(chartRegex, '').includes('[CHART_OPTION_START]')) {
     processedContent = processedContent.replace(/\[CHART_OPTION_START\][\s\S]*$/, '\n> 📈 图表生成中...\n');
   }
@@ -222,52 +223,80 @@ ${slotsContext}
     }
   };
 
-  const renderCharts = () => {
-    if (chartMatches.length === 0) return null;
-    return chartMatches.map((raw, i) => {
-      let option: any = null;
-      const cleaned = raw.trim().replace(/^```(json)?\s*/i, '').replace(/```\s*$/, '').trim();
-      try {
-        option = JSON.parse(cleaned);
-      } catch (_e) {
-        // 模型手抄 JSON 可能漏括号/逗号，先尝试自动修复再放弃
-        try {
-          option = JSON.parse(jsonrepair(cleaned));
-        } catch (_e2) {
-          return (
-            <div key={`chart-err-${i}`} className={styles.chartError}>
-              <i className="ri-error-warning-line"></i> 图表配置解析失败，请检查 CHART_OPTION 块内是否为合法 JSON。
-            </div>
-          );
-        }
-      }
-      if (!option || typeof option !== 'object' || !option.series) {
-        return (
-          <div key={`chart-err-${i}`} className={styles.chartError}>
-            <i className="ri-error-warning-line"></i> 图表配置缺少 series 字段，无法渲染。
+  // 解析单个 chart payload → React 节点
+  const renderOneChart = (raw: string, key: string) => {
+    let option: any = null;
+    const cleaned = raw.trim().replace(/^```(json)?\s*/i, '').replace(/```\s*$/, '').trim();
+    try {
+      option = JSON.parse(cleaned);
+    } catch (_e) {
+      try { option = JSON.parse(jsonrepair(cleaned)); } catch (_e2) { /* fall through */ }
+    }
+    if (!option || typeof option !== 'object') {
+      return (
+        <div key={key} className={styles.chartError}>
+          <i className="ri-error-warning-line"></i> 图表配置解析失败，请检查 CHART_OPTION 块内是否为合法 JSON。
+        </div>
+      );
+    }
+    if (!option.series) {
+      return (
+        <div key={key} className={styles.chartError}>
+          <i className="ri-error-warning-line"></i> 图表配置缺少 series 字段，无法渲染。
+        </div>
+      );
+    }
+    // 横向条形图：按条目数动态拉高，每条留 44px + 标题/坐标区 160px
+    const isHorizontalBar =
+      option.series?.[0]?.type === 'bar' &&
+      (Array.isArray(option.yAxis)
+        ? option.yAxis[0]?.type === 'category'
+        : option.yAxis?.type === 'category');
+    const itemCount: number = isHorizontalBar
+      ? (Array.isArray(option.yAxis)
+          ? option.yAxis[0]?.data?.length
+          : option.yAxis?.data?.length) ?? 0
+      : 0;
+    const chartHeight = isHorizontalBar ? Math.max(360, itemCount * 44 + 160) : 360;
+    return (
+      <div key={key} className={styles.chartBlock}>
+        <ReactECharts option={option} style={{ height: chartHeight, width: '100%' }} notMerge lazyUpdate />
+      </div>
+    );
+  };
+
+  // 将含占位符的 markdown 文本拆分为 [文字段, 图表, 文字段, ...] 并渲染
+  const renderMarkdownWithInlineCharts = (text: string, blockKey: string) => {
+    const phRegex = new RegExp(`${CHART_PH}(\\d+)__`, 'g');
+    const parts: React.ReactNode[] = [];
+    let last = 0;
+    let m: RegExpExecArray | null;
+    let seg = 0;
+    while ((m = phRegex.exec(text)) !== null) {
+      const before = text.slice(last, m.index);
+      if (before.trim()) {
+        parts.push(
+          <div key={`${blockKey}-t${seg}`} className={styles.markdownBlock}>
+            {renderMarkdown(before)}
           </div>
         );
       }
-      // 横向条形图：按条目数动态拉高，每条留 44px + 标题/坐标区 160px
-      const isHorizontalBar =
-        option.series?.[0]?.type === 'bar' &&
-        (Array.isArray(option.yAxis)
-          ? option.yAxis[0]?.type === 'category'
-          : option.yAxis?.type === 'category');
-      const itemCount: number = isHorizontalBar
-        ? (Array.isArray(option.yAxis)
-            ? option.yAxis[0]?.data?.length
-            : option.yAxis?.data?.length) ?? 0
-        : 0;
-      const chartHeight = isHorizontalBar
-        ? Math.max(360, itemCount * 44 + 160)
-        : 360;
-      return (
-        <div key={`chart-${i}`} className={styles.chartBlock}>
-          <ReactECharts option={option} style={{ height: chartHeight, width: '100%' }} notMerge lazyUpdate />
+      const chartIdx = parseInt(m[1], 10);
+      if (chartIdx < chartPayloads.length) {
+        parts.push(renderOneChart(chartPayloads[chartIdx], `${blockKey}-c${chartIdx}`));
+      }
+      last = m.index + m[0].length;
+      seg++;
+    }
+    const tail = text.slice(last);
+    if (tail.trim()) {
+      parts.push(
+        <div key={`${blockKey}-t${seg}`} className={styles.markdownBlock}>
+          {renderMarkdown(tail)}
         </div>
       );
-    });
+    }
+    return parts;
   };
 
   const renderInlineCard = () => {
@@ -492,13 +521,15 @@ ${slotsContext}
         }
         
         if (block.type === 'markdown') {
-          return <div key={i} className={styles.markdownBlock}>{renderMarkdown(block.content)}</div>;
+          // 图文穿插：按占位符拆分，图表原位渲染
+          const segments = renderMarkdownWithInlineCharts(block.content, `blk-${i}`);
+          if (segments.length === 0) return null;
+          return <React.Fragment key={i}>{segments}</React.Fragment>;
         }
         
         return null;
       })}
       
-      {renderCharts()}
       {renderInlineCard()}
     </div>
   );

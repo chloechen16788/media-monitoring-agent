@@ -8,6 +8,37 @@ import sys
 ES_URL = "http://139.198.17.239:9203"
 # INDEX_NAME will be built dynamically using uid and partition
 
+DATA_CHANNEL_MAP = {
+    # 星光编码
+    105: "网媒资讯", 106: "论坛", 107: "博客", 108: "微博",
+    109: "平媒", 110: "微信", 111: "视频", 112: "资讯APP",
+    113: "论坛评论", 114: "长微博", 121: "短视频",
+    51: "微博原帖", 95: "搜索引擎", 0: "未知",
+    # 清博编码（兼容 int 与字符串零填充）
+    1: "新闻", 2: "论坛", 3: "博客", 4: "微博", 5: "平媒",
+    6: "微信", 7: "视频", 8: "长微博", 9: "APP", 10: "评论",
+    11: "短视频", 99: "搜索引擎",
+    "01": "新闻", "02": "论坛", "03": "博客", "04": "微博", "05": "平媒",
+    "06": "微信", "07": "视频", "08": "长微博", "09": "APP", "10": "评论",
+    "11": "短视频", "99": "搜索引擎",
+}
+
+
+def resolve_channel_name(channel_id) -> str:
+    if channel_id in DATA_CHANNEL_MAP:
+        return DATA_CHANNEL_MAP[channel_id]
+    key = str(channel_id).strip()
+    if key in DATA_CHANNEL_MAP:
+        return DATA_CHANNEL_MAP[key]
+    if key.isdigit():
+        numeric = int(key)
+        if numeric in DATA_CHANNEL_MAP:
+            return DATA_CHANNEL_MAP[numeric]
+        key2 = f"{numeric:02d}"
+        if key2 in DATA_CHANNEL_MAP:
+            return DATA_CHANNEL_MAP[key2]
+    return f"未知渠道({channel_id})"
+
 def _month_of(time_str) -> str | None:
     """从时间字符串（YYYY-MM-DD ...）推导月份分区 YYYYMM。"""
     try:
@@ -69,6 +100,13 @@ def execute(params: dict) -> str:
     size = int(params.get("size", 20))
     sentiment_filter = params.get("sentiment_filter")
     channel_filter = params.get("channel_filter")
+    # 正文截断上限：默认 1500（图表归因场景不变）；标注取数流程可传 2000，传 0 表示不截断。
+    try:
+        content_max_chars = int(params.get("content_max_chars", 1500))
+    except (TypeError, ValueError):
+        return json.dumps({"error": "content_max_chars 必须是整数。"})
+    if content_max_chars < 0:
+        content_max_chars = 0
     
     if not task_ids or not start_time or not end_time:
         return json.dumps({"error": "缺少必要的参数: task_ids, start_time, end_time"})
@@ -137,7 +175,9 @@ def execute(params: dict) -> str:
                                     "prn",
                                     "finger",
                                     "messageContent",
-                                    "taskId"
+                                    "taskId",
+                                    "dataChannel",
+                                    "blurb",
                                 ],
                                 "sort": [{"prn": {"order": "desc"}}]
                             }
@@ -164,15 +204,22 @@ def execute(params: dict) -> str:
                 
             source = hits[0].get("_source", {})
             
-            # 清洗内容，截断前 1500 个字符以防大模型 Token 撑爆
+            # 清洗内容，按 content_max_chars 截断以防大模型 Token 撑爆（0 表示不截断）
             raw_content = _resolve_content(source)
-            clean_content = raw_content[:1500] + "..." if len(raw_content) > 1500 else raw_content
+            if content_max_chars and len(raw_content) > content_max_chars:
+                clean_content = raw_content[:content_max_chars] + "..."
+            else:
+                clean_content = raw_content
             
+            channel_id = source.get("dataChannel")
             results.append({
                 "taskId": source.get("taskId"),
                 "title": source.get("messageTitle", ""),
                 "media": source.get("mediaName", ""),
                 "time": source.get("messageTime", ""),
+                "dataChannel": channel_id,
+                "channel_source_name": resolve_channel_name(channel_id),
+                "blurb": source.get("blurb", ""),
                 "fingerprint_cluster_size": b["doc_count"], # 传播热度
                 "content_snippet": clean_content
             })
