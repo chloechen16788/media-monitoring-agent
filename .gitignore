@@ -16,8 +16,10 @@ data/users/*/projects/*/workspace/
 workspace/
 logs/
 gateway/database.sqlite
+*.log
 *.jsonl
 *.xlsx
+curl_out.json
 deploy/launchd/tagging.env
 
 .firecrawl/

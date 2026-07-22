@@ -448,24 +448,6 @@
       "brief": "【说明书】专利授权公开日回写流程：读表→提取专利号→Google优先/EPO兜底→回写授权公开日。"
     },
     {
-      "id": "query_reimbursement_policy",
-      "type": "script",
-      "role": "sub",
-      "group": "executor",
-      "entry": "skills/query_reimbursement_policy.py",
-      "enabled": true,
-      "brief": "查询公司内部的差旅、打车、餐饮等报销制度和规定。"
-    },
-    {
-      "id": "check_reimbursement_progress",
-      "type": "script",
-      "role": "sub",
-      "group": "executor",
-      "entry": "skills/check_reimbursement_progress.py",
-      "enabled": true,
-      "brief": "查询某位员工当前报销单的审批进度状态。"
-    },
-    {
       "id": "send_feishu_message",
       "type": "script",
       "role": "sub",
@@ -643,22 +625,6 @@
       "entry": "skills/docs/word_cloud_analysis_schema.md",
       "enabled": true,
       "brief": "【说明书】词云分析全流程：es_agg_search 取词频/实体数据（keyword_freq/named_entities）→ render_word_cloud 渲染词云 → es_sample_search 对 Top10 词条抽样归因。"
-    },
-    {
-      "id": "advanced_chart_sampling",
-      "type": "doc",
-      "group": "doc",
-      "entry": "skills/chart_sampling_schema.md",
-      "enabled": true,
-      "brief": "高级图表抽样规范指南：包含 9 种图表的标准抽样逻辑与 JSON 输出契约说明书。当你需要深挖大屏图表背后的具体事件和文章时，务必查阅此说明书。"
-    },
-    {
-      "id": "generate_report",
-      "type": "doc",
-      "group": "doc",
-      "entry": "skills/report_generation_schema.md",
-      "enabled": true,
-      "brief": "创建一份全新的动态全景数据分析报告卡片（如品牌月报、竞品周报等）。当用户要求生成报告、看大屏时调用此技能。"
     },
     {
       "id": "chart_render_schema",
