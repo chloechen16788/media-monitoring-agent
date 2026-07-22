@@ -458,7 +458,7 @@ app.post('/api/sessions/:sessionId/upload', (req, res) => {
       res.json({
         status: 'success',
         message: 'File uploaded successfully',
-        filePath: `./workspace/${req.file.filename}`,
+        filePath: `./uploads/${req.file.filename}`,
         project_id: sessionRow.project_id,
       });
     });
@@ -1116,7 +1116,8 @@ app.post('/api/chat', (req, res) => {
     });
 
     // 启动 Headless 隔离的 Agent 子进程
-    const worker = spawn('node', [WORKER_PATH], {
+    const workerNodeBin = process.env.WORKER_NODE_BIN || process.execPath;
+    const worker = spawn(workerNodeBin, [WORKER_PATH], {
       cwd: sessionDir,
       env: {
         ...process.env,
@@ -1138,38 +1139,79 @@ app.post('/api/chat', (req, res) => {
     // 否则 SSE 流永不结束，前端一直处于运行状态。
     let workerDoneCleanly = false;
     let doneKillTimer = null;
+    let stdoutBuffer = '';
+    const workerLogDir = path.resolve(__dirname, '../logs/worker');
+    ensureDir(workerLogDir);
+    const workerStderrLogPath = path.join(workerLogDir, 'worker-stderr.log');
+    const workerStdoutParseFailLogPath = path.join(workerLogDir, 'worker-stdout-parse-fail.log');
+    const workerStdoutRawLogPath = path.join(workerLogDir, 'worker-stdout-raw.log');
 
-    // 捕获无头 CLI 的纯净 JSON 流并转发为 SSE
-    worker.stdout.on('data', (data) => {
-      const lines = data.toString().split('\n').filter(l => l.trim() !== '');
-      for (const line of lines) {
-        try {
-          const parsed = JSON.parse(line); // 尝试解析确保是合法 JSON
-          if (parsed.type === 'item') {
-            history.push(parsed.data);
-            writeHistory(sessionPaths, history);
-          }
-          if (parsed.type === 'done') {
-            workerDoneCleanly = true;
-            if (!doneKillTimer) {
-              doneKillTimer = setTimeout(() => {
-                console.log(`Worker [${sessionId}] done but still alive, force killing`);
-                worker.kill();
-              }, 3000);
-            }
-          }
-          res.write(`data: ${line}\n\n`);
-        } catch (e) {
-          console.log(`Worker stdout (non-json):`, line);
+    const handleWorkerStdoutLine = (line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return;
+      try {
+        const parsed = JSON.parse(trimmed); // 确保是完整 JSON 行（NDJSON）
+        if (parsed.type === 'item') {
+          history.push(parsed.data);
+          writeHistory(sessionPaths, history);
         }
+        if (parsed.type === 'done') {
+          workerDoneCleanly = true;
+          if (!doneKillTimer) {
+            doneKillTimer = setTimeout(() => {
+              console.log(`Worker [${sessionId}] done but still alive, force killing`);
+              worker.kill();
+            }, 3000);
+          }
+        }
+        res.write(`data: ${trimmed}\n\n`);
+      } catch (e) {
+        console.log(`Worker stdout (non-json):`, trimmed);
+        try {
+          const now = new Date().toISOString();
+          const logEntry = `[${now}] session=${sessionId} line=${JSON.stringify(trimmed)}\n`;
+          fs.appendFileSync(workerStdoutParseFailLogPath, logEntry, 'utf8');
+        } catch (logErr) {
+          console.error(`Worker [${sessionId}] STDOUT parse-fail log write failed:`, logErr && logErr.message ? logErr.message : logErr);
+        }
+      }
+    };
+
+    // 捕获无头 CLI 的 JSON 行流并转发为 SSE；处理跨 chunk 分片，避免误丢半截 JSON。
+    worker.stdout.on('data', (data) => {
+      const rawChunk = data.toString();
+      try {
+        const now = new Date().toISOString();
+        const logEntry = `[${now}] session=${sessionId} chunk=${JSON.stringify(rawChunk)}\n`;
+        fs.appendFileSync(workerStdoutRawLogPath, logEntry, 'utf8');
+      } catch (logErr) {
+        console.error(`Worker [${sessionId}] STDOUT raw log write failed:`, logErr && logErr.message ? logErr.message : logErr);
+      }
+      stdoutBuffer += rawChunk;
+      const lines = stdoutBuffer.split('\n');
+      stdoutBuffer = lines.pop() || '';
+      for (const line of lines) {
+        handleWorkerStdoutLine(line);
       }
     });
 
     worker.stderr.on('data', (data) => {
-      console.error(`Worker [${sessionId}] STDERR:`, data.toString());
+      const rawChunk = data.toString();
+      console.error(`Worker [${sessionId}] STDERR:`, rawChunk);
+      try {
+        const now = new Date().toISOString();
+        const logEntry = `[${now}] session=${sessionId} chunk=${JSON.stringify(rawChunk)}\n`;
+        fs.appendFileSync(workerStderrLogPath, logEntry, 'utf8');
+      } catch (logErr) {
+        console.error(`Worker [${sessionId}] STDERR log write failed:`, logErr && logErr.message ? logErr.message : logErr);
+      }
     });
 
     worker.on('close', (code) => {
+      if (stdoutBuffer.trim()) {
+        handleWorkerStdoutLine(stdoutBuffer);
+        stdoutBuffer = '';
+      }
       if (doneKillTimer) {
         clearTimeout(doneKillTimer);
         doneKillTimer = null;

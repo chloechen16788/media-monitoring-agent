@@ -2,6 +2,7 @@ import json
 import urllib.request
 import urllib.error
 import traceback
+import os
 from datetime import datetime
 import sys
 
@@ -76,6 +77,32 @@ def _resolve_content(source: dict) -> str:
     return ""
 
 
+def _to_bool(value, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ("1", "true", "yes", "y", "on")
+
+
+def _atomic_write(path: str, content: str) -> None:
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    tmp = f"{path}.tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(content)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
+def _write_jsonl(path: str, rows: list[dict]) -> str:
+    payload = "\n".join(json.dumps(r, ensure_ascii=False) for r in rows)
+    if payload:
+        payload += "\n"
+    _atomic_write(path, payload)
+    return os.path.abspath(path)
+
+
 def execute(params: dict) -> str:
     """
     执行基于 Fingerprint 的去重高赞文章抽样。
@@ -90,6 +117,10 @@ def execute(params: dict) -> str:
     - partition: str - 索引分区月份 (e.g. "202604")
     - sentiment_filter: int - 强制情感过滤 (如 -1 代表仅抽取负面)
     - channel_filter: int or list[int] - 按渠道 ID 过滤 (如 108 代表微博，支持单值或数组)
+    - output_jsonl: 可选。若传入则把结果写入 JSONL 文件（每行一条）并返回 file_path
+    - include_articles: 可选。是否在 stdout 返回 articles。默认规则：
+      * 未传 output_jsonl -> True
+      * 传了 output_jsonl -> False（避免大结果在 tool 消息中被截断）
     """
     uid = params.get("uid", "134209751")
 
@@ -101,6 +132,9 @@ def execute(params: dict) -> str:
     sentiment_filter = params.get("sentiment_filter")
     channel_filter = params.get("channel_filter")
     # 正文截断上限：默认 1500（图表归因场景不变）；标注取数流程可传 2000，传 0 表示不截断。
+    output_jsonl = str(params.get("output_jsonl") or "").strip()
+    include_articles = _to_bool(params.get("include_articles"), default=(not bool(output_jsonl)))
+
     try:
         content_max_chars = int(params.get("content_max_chars", 1500))
     except (TypeError, ValueError):
@@ -172,6 +206,7 @@ def execute(params: dict) -> str:
                                     "messageTime",
                                     "mediaName",
                                     "messageUrl",
+                                    "author",
                                     "prn",
                                     "finger",
                                     "messageContent",
@@ -215,6 +250,8 @@ def execute(params: dict) -> str:
             results.append({
                 "taskId": source.get("taskId"),
                 "title": source.get("messageTitle", ""),
+                "url": source.get("messageUrl", ""),
+                "author": source.get("author", ""),
                 "media": source.get("mediaName", ""),
                 "time": source.get("messageTime", ""),
                 "dataChannel": channel_id,
@@ -224,7 +261,17 @@ def execute(params: dict) -> str:
                 "content_snippet": clean_content
             })
             
-        return json.dumps({"status": "success", "extracted_count": len(results), "articles": results}, ensure_ascii=False, indent=2)
+        file_path = ""
+        if output_jsonl:
+            file_path = _write_jsonl(output_jsonl, results)
+
+        out = {"status": "success", "extracted_count": len(results)}
+        if file_path:
+            out["file_path"] = file_path
+            out["output_jsonl"] = output_jsonl
+        if include_articles:
+            out["articles"] = results
+        return json.dumps(out, ensure_ascii=False, indent=2)
         
     except Exception as e:
         err_msg = traceback.format_exc()

@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar';
 import ChatArea from './components/ChatArea';
 import RightSidebar from './components/RightSidebar';
 import Login from './components/Login';
+import { apiUrl } from './config/api';
 interface RightPanelConfig {
   mode: 'citation' | 'workspace' | 'tasks';
   data: string | any;
@@ -42,15 +43,19 @@ function App() {
     try {
       const [agentRes, contractRes] = await Promise.all([
         fetch(
-          `http://localhost:3000/api/projects/${encodeURIComponent(
-            targetProjectId
-          )}/agent-state?userId=${encodeURIComponent(userId)}`,
+          apiUrl(
+            `/api/projects/${encodeURIComponent(targetProjectId)}/agent-state?userId=${encodeURIComponent(
+              userId
+            )}`
+          ),
           { headers: { 'x-user-id': userId } }
         ),
         fetch(
-          `http://localhost:3000/api/projects/${encodeURIComponent(
-            targetProjectId
-          )}/task-contract?userId=${encodeURIComponent(userId)}`,
+          apiUrl(
+            `/api/projects/${encodeURIComponent(targetProjectId)}/task-contract?userId=${encodeURIComponent(
+              userId
+            )}`
+          ),
           { headers: { 'x-user-id': userId } }
         ),
       ]);
@@ -104,7 +109,7 @@ function App() {
     if (!userId || !currentProjectId) return false;
     try {
       const res = await fetch(
-        `http://localhost:3000/api/projects/${encodeURIComponent(currentProjectId)}/agent-state`,
+        apiUrl(`/api/projects/${encodeURIComponent(currentProjectId)}/agent-state`),
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
@@ -133,15 +138,19 @@ function App() {
     try {
       const [agentRes, contractRes] = await Promise.all([
         fetch(
-          `http://localhost:3000/api/projects/${encodeURIComponent(
-            currentProjectId
-          )}/agent-state?userId=${encodeURIComponent(userId)}`,
+          apiUrl(
+            `/api/projects/${encodeURIComponent(currentProjectId)}/agent-state?userId=${encodeURIComponent(
+              userId
+            )}`
+          ),
           { headers: { 'x-user-id': userId } }
         ),
         fetch(
-          `http://localhost:3000/api/projects/${encodeURIComponent(
-            currentProjectId
-          )}/task-contract?userId=${encodeURIComponent(userId)}`,
+          apiUrl(
+            `/api/projects/${encodeURIComponent(currentProjectId)}/task-contract?userId=${encodeURIComponent(
+              userId
+            )}`
+          ),
           { headers: { 'x-user-id': userId } }
         ),
       ]);
@@ -170,9 +179,9 @@ function App() {
     if (!switched) return;
     try {
       const contractRes = await fetch(
-        `http://localhost:3000/api/projects/${encodeURIComponent(
-          currentProjectId
-        )}/task-contract?userId=${encodeURIComponent(userId)}`,
+        apiUrl(
+          `/api/projects/${encodeURIComponent(currentProjectId)}/task-contract?userId=${encodeURIComponent(userId)}`
+        ),
         { headers: { 'x-user-id': userId } }
       );
       const contract = contractRes.ok ? await contractRes.json() : null;
@@ -182,7 +191,7 @@ function App() {
         const allowedSkills = Array.isArray(contract.allowed_skills) ? contract.allowed_skills : [];
         if (canPromote && allowedSkills.length > 0) {
           const setExecutingRes = await fetch(
-            `http://localhost:3000/api/projects/${encodeURIComponent(currentProjectId)}/task-contract`,
+            apiUrl(`/api/projects/${encodeURIComponent(currentProjectId)}/task-contract`),
             {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
@@ -208,7 +217,7 @@ function App() {
     if (!currentProjectId || !userId) return;
     try {
       const res = await fetch(
-        `http://localhost:3000/api/projects/${encodeURIComponent(currentProjectId)}/task-contract`,
+        apiUrl(`/api/projects/${encodeURIComponent(currentProjectId)}/task-contract`),
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', 'x-user-id': userId },

@@ -8,6 +8,7 @@ import ParamRequestBar, {
 } from './ParamRequestBar';
 import SkillFallbackBar, { type SkillFallbackPayload } from './SkillFallbackBar';
 import DispatchConfirmBar from './DispatchConfirmBar';
+import { apiUrl } from '../config/api';
 
 type AgentMode = 'master' | 'sub';
 
@@ -50,6 +51,14 @@ const NATIVE_TOOLS = [
 const SUB_EXEC_PROMPT =
   '请严格按照当前 task_contract 执行任务，仅使用 allowed_skills 并返回结构化执行结果。';
 const PROCESS_BLOCK_REGEX = /<(think|tool_call|tool_result)>[\s\S]*?<\/\1>/gi;
+
+function normalizeAttachmentPath(pathLike: string): string {
+  // 兼容历史返回值 ./workspace/*，统一映射到 session cwd 可访问的 ./uploads/*
+  if (pathLike.startsWith('./workspace/')) {
+    return pathLike.replace('./workspace/', './uploads/');
+  }
+  return pathLike;
+}
 
 export default function ChatArea({
   userId,
@@ -135,9 +144,11 @@ export default function ChatArea({
     const fetchHistory = async () => {
       try {
         const res = await fetch(
-          `http://localhost:3000/api/sessions/${currentSessionId}/history?userId=${encodeURIComponent(
-            userId
-          )}&projectId=${encodeURIComponent(projectId)}`
+          apiUrl(
+            `/api/sessions/${currentSessionId}/history?userId=${encodeURIComponent(
+              userId
+            )}&projectId=${encodeURIComponent(projectId)}`
+          )
         );
         const history = await res.json();
         const parsedMessages: Message[] = [];
@@ -203,9 +214,7 @@ export default function ChatArea({
     const fetchSkills = async () => {
       try {
         const res = await fetch(
-          `http://localhost:3000/api/skills/registry?role=${encodeURIComponent(
-            agentMode
-          )}&enabled=true`
+          apiUrl(`/api/skills/registry?role=${encodeURIComponent(agentMode)}&enabled=true`)
         );
         const data = await res.json();
         const allSkills = Array.isArray(data.skills) ? data.skills : [];
@@ -412,14 +421,16 @@ export default function ChatArea({
 
     try {
       const res = await fetch(
-        `http://localhost:3000/api/sessions/${currentSessionId}/upload?userId=${encodeURIComponent(
-          userId
-        )}&projectId=${encodeURIComponent(projectId)}`,
+        apiUrl(
+          `/api/sessions/${currentSessionId}/upload?userId=${encodeURIComponent(
+            userId
+          )}&projectId=${encodeURIComponent(projectId)}`
+        ),
         { method: 'POST', body: formData }
       );
       const data = await res.json();
       if (data.status === 'success') {
-        setAttachedFilePath(data.filePath);
+        setAttachedFilePath(normalizeAttachmentPath(String(data.filePath || '')));
       }
     } catch (err) {
       console.error('Upload failed', err);
@@ -430,9 +441,9 @@ export default function ChatArea({
     if (!projectId) return null;
     try {
       const res = await fetch(
-        `http://localhost:3000/api/projects/${encodeURIComponent(
-          projectId
-        )}/task-contract?userId=${encodeURIComponent(userId)}`,
+        apiUrl(
+          `/api/projects/${encodeURIComponent(projectId)}/task-contract?userId=${encodeURIComponent(userId)}`
+        ),
         { headers: { 'x-user-id': userId } }
       );
       if (!res.ok) return null;
@@ -515,7 +526,7 @@ export default function ChatArea({
     const raw = firstMessage.replace(/[\r\n]+/g, ' ').trim();
     const title = [...raw].slice(0, 10).join('') || '新对话';
     try {
-      await fetch(`http://localhost:3000/api/sessions/${encodeURIComponent(sessionId)}/title`, {
+      await fetch(apiUrl(`/api/sessions/${encodeURIComponent(sessionId)}/title`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title }),
@@ -559,7 +570,7 @@ export default function ChatArea({
     let wasAborted = false;
     try {
       abortControllerRef.current = new AbortController();
-      const response = await fetch('http://localhost:3000/api/chat', {
+      const response = await fetch(apiUrl('/api/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: abortControllerRef.current.signal,
@@ -720,7 +731,8 @@ export default function ChatArea({
     }
 
     if (!trimmedInput && !attachedFilePath && !supplement) return;
-    const basePrompt = attachedFilePath ? `请参考附件 ${attachedFilePath}。 ${input}` : input;
+    const normalizedAttachment = attachedFilePath ? normalizeAttachmentPath(attachedFilePath) : null;
+    const basePrompt = normalizedAttachment ? `请参考附件 ${normalizedAttachment}。 ${input}` : input;
     const finalPrompt = supplement
       ? `${basePrompt}${basePrompt.trim() ? '\n\n' : ''}${supplement}`
       : basePrompt;

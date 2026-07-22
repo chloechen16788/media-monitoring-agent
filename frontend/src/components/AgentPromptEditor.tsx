@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import styles from './AgentPromptEditor.module.css';
+import { apiUrl } from '../config/api';
 
 type AgentRole = 'master' | 'sub';
 
@@ -19,7 +20,7 @@ export default function AgentPromptEditor({ userId }: AgentPromptEditorProps) {
     setStatus('');
     try {
       const res = await fetch(
-        `http://localhost:3000/api/agents/${targetRole}/system-prompt?userId=${encodeURIComponent(userId)}`,
+        apiUrl(`/api/agents/${targetRole}/system-prompt?userId=${encodeURIComponent(userId)}`),
         { headers: { 'x-user-id': userId } }
       );
       const data = await res.json();
@@ -50,7 +51,7 @@ export default function AgentPromptEditor({ userId }: AgentPromptEditorProps) {
     setSaving(true);
     setStatus('');
     try {
-      const res = await fetch(`http://localhost:3000/api/agents/${role}/system-prompt`, {
+      const res = await fetch(apiUrl(`/api/agents/${role}/system-prompt`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
         body: JSON.stringify({ userId, content }),

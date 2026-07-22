@@ -6,6 +6,7 @@ import ReactECharts from 'echarts-for-react';
 import { jsonrepair } from 'jsonrepair';
 import 'echarts-wordcloud';
 import styles from './MessageRenderer.module.css';
+import { apiUrl } from '../config/api';
 
 interface MessageRendererProps {
   content: string;
@@ -149,7 +150,7 @@ export default function MessageRenderer({ content, onShowCitation, onOpenWorkspa
         agentMode,
       };
 
-      const res = await fetch('http://localhost:3000/api/generate-report', {
+      const res = await fetch(apiUrl('/api/generate-report'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -201,7 +202,7 @@ ${slotsContext}
 </UPDATE_INSIGHT>
 这部分代码会被系统拦截并直接投射到大屏，用户能看到打字机效果！`;
           
-          await fetch(`http://localhost:3000/api/sessions/${sessionId}/message`, {
+          await fetch(apiUrl(`/api/sessions/${sessionId}/message`), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -457,7 +458,7 @@ ${slotsContext}
     
     return (
       <div onClick={handleCitationClick}>
-        <ReactMarkdown 
+        <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           components={{
             a: ({node, ...props}) => {
@@ -465,13 +466,13 @@ ${slotsContext}
                 const id = props.href.replace('#citation-', '');
                 return <sup className="citation" data-id={id}>[{id}]</sup>;
               }
-              if (props.href?.startsWith('./workspace/')) {
+              if (props.href?.startsWith('./workspace/') || props.href?.startsWith('./uploads/')) {
                 const filename = props.href.split('/').pop();
                 const query = `userId=${encodeURIComponent(userId)}&projectId=${encodeURIComponent(projectId || '')}`;
                 return (
-                  <a 
-                    href={`http://localhost:3000/api/sessions/${sessionId}/download/${filename}?${query}`} 
-                    target="_blank" 
+                  <a
+                    href={apiUrl(`/api/sessions/${sessionId}/download/${filename}?${query}`)}
+                    target="_blank"
                     rel="noopener noreferrer"
                     className={styles.fileDownloadLink}
                   >

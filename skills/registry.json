@@ -131,6 +131,8 @@
           "keywords": {"type": "string"},
           "size": {"type": "integer", "minimum": 1},
           "content_max_chars": {"type": "integer", "minimum": 0, "default": 1500},
+          "output_jsonl": {"type": "string"},
+          "include_articles": {"type": "boolean"},
           "sentiment_filter": {"type": "integer"},
           "channel_filter": {
             "oneOf": [
@@ -225,7 +227,6 @@
       "brief": "读取 JSONL 调用标注模型(默认Gemini原生API,可扩展gateway/local)做 BMW 硬核科技新闻标注，写回 annotated JSONL。",
       "input_schema": {
         "type": "object",
-        "required": ["input_jsonl", "output_jsonl"],
         "properties": {
           "input_jsonl": {"type": "string"},
           "output_jsonl": {"type": "string"},
@@ -235,12 +236,13 @@
           "content_field": {"type": "string", "default": "content_snippet"},
           "content_max_chars": {"type": "integer", "minimum": 0, "default": 2000},
           "provider": {"type": "string", "enum": ["gemini", "gateway", "local"], "default": "gemini"},
-          "max_workers": {"type": "integer", "minimum": 1, "maximum": 64, "default": 16},
+          "max_workers": {"type": "integer", "minimum": 1, "maximum": 64, "default": 2},
           "max_records": {"type": "integer", "minimum": 1, "default": 1500},
           "progress_file": {"type": "string"},
           "manifest_path": {"type": "string"},
           "batch_id": {"type": "integer"},
-          "prompt_override": {"type": "string"}
+          "prompt_override": {"type": "string"},
+          "batch_prompt_override": {"type": "string"}
         }
       },
       "output_schema": {
@@ -279,6 +281,171 @@
       "entry": "skills/deep_web_crawl.py",
       "enabled": true,
       "brief": "深度网页阅读：提供具体的URL链接，抓取并读取该网页的完整长篇内容（转为Markdown格式）。"
+    },
+    {
+      "id": "read_tabular_data",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/executor/read_tabular_data.py",
+      "enabled": true,
+      "brief": "读取 xlsx/csv/jsonl 并标准化为 rows，对每行附加 row_id 与源行号，供后续抽取和回写复用。",
+      "input_schema": {
+        "type": "object",
+        "required": ["source_path"],
+        "properties": {
+          "source_path": {"type": "string"},
+          "file_type": {"type": "string", "enum": ["xlsx", "csv", "jsonl"]},
+          "sheet_name": {"type": "string"},
+          "sheet_index": {"type": "integer", "minimum": 0, "default": 0},
+          "header_row": {"type": "integer", "minimum": 1, "default": 1},
+          "start_row": {"type": "integer", "minimum": 1},
+          "encoding": {"type": "string", "default": "utf-8-sig"},
+          "delimiter": {"type": "string", "default": ","},
+          "max_rows": {"type": "integer", "minimum": 0, "default": 0},
+          "fields": {"type": "array", "items": {"type": "string"}}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "extract_patent_numbers",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/executor/extract_patent_numbers.py",
+      "enabled": true,
+      "brief": "从 rows 文本字段中提取并标准化专利号，输出每行 patent_numbers、first_patent_number 与统计信息。",
+      "input_schema": {
+        "type": "object",
+        "required": ["rows"],
+        "properties": {
+          "rows": {"type": "array", "items": {"type": "object"}, "minItems": 1},
+          "content_fields": {"type": "array", "items": {"type": "string"}},
+          "include_countries": {"type": "array", "items": {"type": "string"}},
+          "write_back_field": {"type": "string", "default": "patent_numbers"},
+          "keep_existing": {"type": "boolean", "default": false}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "lookup_patent_google",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/executor/lookup_patent_google.py",
+      "enabled": true,
+      "env": ["SKILL_FIRECRAWL_API_KEY"],
+      "brief": "查询 Google Patents 并提取授权公开日，适合作为专利日期查询链路的第一优先数据源。",
+      "input_schema": {
+        "type": "object",
+        "required": ["patent_number"],
+        "properties": {
+          "patent_number": {"type": "string"},
+          "search_limit": {"type": "integer", "minimum": 1, "maximum": 20, "default": 6}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "lookup_patent_epo_ops",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/executor/lookup_patent_epo_ops.py",
+      "enabled": true,
+      "env": ["SKILL_EPO_OPS_KEY", "SKILL_EPO_OPS_SECRET"],
+      "brief": "使用 EPO OPS 通过专利号查询书目信息并提取授权公开日，用于 Google 未命中时兜底。",
+      "input_schema": {
+        "type": "object",
+        "required": ["patent_number"],
+        "properties": {
+          "patent_number": {"type": "string"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "write_tabular_data",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/executor/write_tabular_data.py",
+      "enabled": true,
+      "brief": "将 enriched rows 回写到 xlsx/csv/jsonl，支持新增列（如授权公开日）并输出新文件路径。",
+      "input_schema": {
+        "type": "object",
+        "required": ["source_path", "rows"],
+        "properties": {
+          "source_path": {"type": "string"},
+          "rows": {"type": "array", "items": {"type": "object"}, "minItems": 1},
+          "output_path": {"type": "string"},
+          "file_type": {"type": "string", "enum": ["xlsx", "csv", "jsonl"]},
+          "update_fields": {"type": "array", "items": {"type": "string"}},
+          "sheet_name": {"type": "string"},
+          "sheet_index": {"type": "integer", "minimum": 0, "default": 0},
+          "header_row": {"type": "integer", "minimum": 1, "default": 1},
+          "start_row": {"type": "integer", "minimum": 1},
+          "encoding": {"type": "string", "default": "utf-8-sig"},
+          "delimiter": {"type": "string", "default": ","},
+          "keep_meta_fields": {"type": "boolean", "default": false}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "patent_grant_date_enrichment",
+      "type": "doc",
+      "group": "doc",
+      "entry": "skills/docs/patent_grant_date_enrichment_schema.md",
+      "enabled": true,
+      "brief": "【说明书】专利授权公开日回写流程：读表→提取专利号→Google优先/EPO兜底→回写授权公开日。"
     },
     {
       "id": "query_reimbursement_policy",

@@ -42,6 +42,24 @@ def sanitize_id(text: str) -> str:
 
 
 def normalize_articles(params: dict) -> list:
+    input_jsonl = str(params.get("input_jsonl") or "").strip()
+    if input_jsonl:
+        if not os.path.exists(input_jsonl):
+            fail(f"input_jsonl 不存在: {input_jsonl}")
+        rows = []
+        with open(input_jsonl, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(obj, dict):
+                    rows.append(obj)
+        return rows
+
     if isinstance(params.get("articles"), list):
         return [x for x in params["articles"] if isinstance(x, dict)]
     sample_output = params.get("sample_output")
@@ -69,7 +87,7 @@ def main() -> None:
     if not articles:
         fail(
             "缺少可导出的 articles 数据。",
-            "请传入 articles 数组，或传入 sample_output/es_sample_output（其中需包含 articles）。"
+            "请传入 input_jsonl，或传入 articles 数组，或传入 sample_output/es_sample_output（其中需包含 articles）。"
             "若尚未取数，请先调用 es_sample_search。",
         )
 

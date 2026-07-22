@@ -439,6 +439,7 @@ export class AgentLoop {
       this.onLoading(true);
 
       const staged: Array<ChatCompletionMessageParam | undefined> = [];
+      let hasAssistantTextOutput = false;
       const stageItem = (item: ChatCompletionMessageParam) => {
         // Ignore any stray events that belong to older generations.
         if (thisGeneration !== this.generation) {
@@ -447,6 +448,22 @@ export class AgentLoop {
 
         // Store the item so the final flush can still operate on a complete list.
         // We'll nil out entries once they're delivered.
+        if (item.role === "assistant") {
+          const textContent = Array.isArray(item.content)
+            ? item.content
+                .map((part) =>
+                  typeof part === "object" && part && "type" in part && part.type === "text"
+                    ? String((part as { text?: unknown }).text ?? "")
+                    : "",
+                )
+                .join("")
+            : typeof item.content === "string"
+              ? item.content
+              : "";
+          if (textContent.trim().length > 0) {
+            hasAssistantTextOutput = true;
+          }
+        }
         this.onItem(item);
         staged.push(item);
         // // Instead of emitting synchronously we schedule a short‑delay delivery.
@@ -740,6 +757,7 @@ export class AgentLoop {
           let message:
             | Extract<ChatCompletionMessageParam, { role: "assistant" }>
             | undefined;
+          let sawFinishReason = false;
           // eslint-disable-next-line no-await-in-loop
           for await (const chunk of stream) {
             if (isLoggingEnabled()) {
@@ -780,10 +798,27 @@ export class AgentLoop {
               this.pendingAborts.add(tool_call.id);
             }
             const finish_reason = chunk?.choices?.[0]?.finish_reason;
+            if (isLoggingEnabled()) {
+              const toolCallIndex =
+                tool_call && typeof tool_call.index !== "undefined"
+                  ? String(tool_call.index)
+                  : "none";
+              const toolCallId = tool_call?.id ?? "none";
+              const toolCallName = tool_call?.function?.name ?? "none";
+              log(
+                `AgentLoop.run(): chunk fields content=${content ? "yes" : "no"} tool_call=${tool_call ? "yes" : "no"} tool_call_index=${toolCallIndex} tool_call_id=${toolCallId} tool_call_name=${toolCallName} finish_reason=${finish_reason ?? "none"}`,
+              );
+            }
             if (finish_reason) {
+              sawFinishReason = true;
               if (thisGeneration === this.generation && !this.canceled) {
                 // Process completed tool calls
                 if (message?.tool_calls?.[0]) {
+                  if (isLoggingEnabled()) {
+                    log(
+                      `AgentLoop.run(): finishing with tool_call id=${message.tool_calls[0].id ?? "none"} name=${message.tool_calls[0].function?.name ?? "none"} args_len=${message.tool_calls[0].function?.arguments?.length ?? 0}`,
+                    );
+                  }
                   const sanitizedMessage = sanitizeAssistantMessage(message);
                   stageItem(sanitizedMessage);
                   const results = await this.handleFunctionCall(sanitizedMessage);
@@ -792,10 +827,18 @@ export class AgentLoop {
                     turnInput.push(...results);
                   }
                 } else if (message && Object.keys(message).length > 0) {
+                  if (isLoggingEnabled()) {
+                    log("AgentLoop.run(): finishing with assistant text-only message");
+                  }
                   stageItem(message);
                 }
               }
             }
+          }
+          if (isLoggingEnabled()) {
+            log(
+              `AgentLoop.run(): stream ended saw_finish_reason=${sawFinishReason ? "yes" : "no"} has_message=${message ? "yes" : "no"} has_tool_calls=${message?.tool_calls?.[0] ? "yes" : "no"}`,
+            );
           }
         } catch (err: unknown) {
           // Gracefully handle an abort triggered via `cancel()` so that the
@@ -920,15 +963,20 @@ export class AgentLoop {
 
       if (isPrematureClose) {
         try {
-          this.onItem({
-            role: "assistant",
-            content: [
-              {
-                type: "text",
-                text: "⚠️  Connection closed prematurely while waiting for the model. Please try again.",
-              },
-            ],
-          });
+          // Some providers can close the stream after already sending a full
+          // answer. In that case we suppress the noisy warning to avoid
+          // appending a false-negative status message after valid output.
+          if (!hasAssistantTextOutput) {
+            this.onItem({
+              role: "assistant",
+              content: [
+                {
+                  type: "text",
+                  text: "⚠️  Connection closed prematurely while waiting for the model. Please try again.",
+                },
+              ],
+            });
+          }
         } catch {
           /* no‑op – emitting the error message is best‑effort */
         }

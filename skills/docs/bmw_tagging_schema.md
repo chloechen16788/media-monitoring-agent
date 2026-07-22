@@ -31,7 +31,7 @@
 只有明确要求时才在 Step 3 切到 `title+content_snippet` 并设置 `content_max_chars: 2000`。
 
 ```text
-python skills/executor/es_sample_search.py "{\"uid\":\"<系统通知提供>\",\"task_ids\":[6860],\"start_time\":\"2026-06-01 00:00:00\",\"end_time\":\"2026-06-30 23:59:59\",\"size\":2000}"
+python skills/executor/es_sample_search.py "{\"uid\":\"<系统通知提供>\",\"task_ids\":[6860],\"start_time\":\"2026-06-01 00:00:00\",\"end_time\":\"2026-06-30 23:59:59\",\"size\":10000,\"output_jsonl\":\"./workspace/bmw_6860_202606/es_sample.jsonl\"}"
 ```
 
 - 缺 uid/task_ids/时间范围 → 输出 `PARAM_REQUEST` 请求补参，禁止编造。
@@ -39,10 +39,10 @@ python skills/executor/es_sample_search.py "{\"uid\":\"<系统通知提供>\",\"
 
 ## Step 2: 切批落 JSONL
 
-调 `es_export_jsonl_batches`，把上一步结果切批（建议 `batch_size` 500~1000）。
+调 `es_export_jsonl_batches`，从 Step1 的 `output_jsonl` 读取并切批（建议 `batch_size` 500~1000）。
 
 ```text
-python skills/executor/es_export_jsonl_batches.py "{\"sample_output\":{<es_sample_search的完整输出>},\"run_id\":\"bmw_6860_202606\",\"batch_size\":1000}"
+python skills/executor/es_export_jsonl_batches.py "{\"input_jsonl\":\"./workspace/bmw_6860_202606/es_sample.jsonl\",\"run_id\":\"bmw_6860_202606\",\"batch_size\":1000}"
 ```
 
 - 产物：`./workspace/<run_id>/manifest.json` + `raw/batch_*.jsonl`。
@@ -53,11 +53,13 @@ python skills/executor/es_export_jsonl_batches.py "{\"sample_output\":{<es_sampl
 读 manifest，找 `status=exported` 的**下一个**批次，对该批调一次 `bmw_tag_jsonl`（一次只处理一批，**禁止循环**）：
 
 ```text
-python skills/executor/bmw_tag_jsonl.py "{\"input_jsonl\":\"./workspace/bmw_6860_202606/raw/batch_000.jsonl\",\"output_jsonl\":\"./workspace/bmw_6860_202606/annotated/batch_000.jsonl\",\"provider\":\"gemini\",\"manifest_path\":\"./workspace/bmw_6860_202606/manifest.json\",\"batch_id\":0,\"progress_file\":\"./workspace/bmw_6860_202606/progress/batch_000.json\"}"
+python skills/executor/bmw_tag_jsonl.py "{\"manifest_path\":\"./workspace/bmw_6860_202606/manifest.json\",\"provider\":\"gemini\",\"progress_file\":\"./workspace/bmw_6860_202606/progress/batch_000.json\"}"
 ```
 
 - 标注完该批 manifest 自动置 `annotated`；再回到本步处理下一批，直到全部 `annotated`。
 - 进度看 `progress/batch_*.json`（旁路文件）。
+- 默认并发按模式自适应：`blurb=2`、`content=23`；且 `input_text_mode="blurb"` 时按 30 条/批发起模型调用（输出仍按单条回填）。
+- 该模式不需要额外读取 manifest 文件内容；skill 内会自动挑选下一批 `exported`。
 - 单批超 `max_records`（默认 1500）会报错，需减小 batch_size。
 - 若业务明确要求使用正文：增加 `"input_text_mode":"content","content_max_chars":2000`。
 - 任一批失败如实上报，不编造标注结果。

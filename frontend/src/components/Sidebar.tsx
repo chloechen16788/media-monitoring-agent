@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import styles from './Sidebar.module.css';
 import AgentPromptEditor from './AgentPromptEditor';
+import { apiUrl } from '../config/api';
 
 interface Session {
   session_id: string;
@@ -53,7 +54,7 @@ export default function Sidebar({
 
   const fetchProjects = async () => {
     try {
-      const res = await fetch(`http://localhost:3000/api/projects?userId=${encodeURIComponent(userId)}`, {
+      const res = await fetch(apiUrl(`/api/projects?userId=${encodeURIComponent(userId)}`), {
         headers: { 'x-user-id': userId },
       });
       const data = await res.json();
@@ -74,9 +75,9 @@ export default function Sidebar({
     }
     try {
       const res = await fetch(
-        `http://localhost:3000/api/sessions?userId=${encodeURIComponent(
-          userId
-        )}&projectId=${encodeURIComponent(currentProjectId)}`
+        apiUrl(
+          `/api/sessions?userId=${encodeURIComponent(userId)}&projectId=${encodeURIComponent(currentProjectId)}`
+        )
       );
       const data = await res.json();
       if (Array.isArray(data)) {
@@ -107,7 +108,7 @@ export default function Sidebar({
       if (currentProjectId) {
         payload.projectId = currentProjectId;
       }
-      const res = await fetch(`http://localhost:3000/api/sessions`, {
+      const res = await fetch(apiUrl('/api/sessions'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -143,7 +144,7 @@ export default function Sidebar({
     const name = prompt('请输入项目名称', '新项目');
     if (!name) return;
     try {
-      const res = await fetch(`http://localhost:3000/api/projects`, {
+      const res = await fetch(apiUrl('/api/projects'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
         body: JSON.stringify({ userId, name }),

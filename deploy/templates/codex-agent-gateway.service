@@ -1,0 +1,22 @@
+[Unit]
+Description=Codex Agent Gateway
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=codex
+Group=codex
+WorkingDirectory=__APP_ROOT__/current/gateway
+Environment=NODE_ENV=production
+EnvironmentFile=__APP_ROOT__/shared/.env
+ExecStart=/usr/bin/node __APP_ROOT__/current/gateway/server.js
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

@@ -44,6 +44,30 @@
     "brief": "深度网页阅读：提供具体的URL链接，抓取并读取该网页的完整长篇内容（转为Markdown格式）。"
   },
   {
+    "id": "read_tabular_data",
+    "brief": "读取 xlsx/csv/jsonl 并标准化为 rows，对每行附加 row_id 与源行号，供后续抽取和回写复用。"
+  },
+  {
+    "id": "extract_patent_numbers",
+    "brief": "从 rows 文本字段中提取并标准化专利号，输出每行 patent_numbers、first_patent_number 与统计信息。"
+  },
+  {
+    "id": "lookup_patent_google",
+    "brief": "查询 Google Patents 并提取授权公开日，适合作为专利日期查询链路的第一优先数据源。"
+  },
+  {
+    "id": "lookup_patent_epo_ops",
+    "brief": "使用 EPO OPS 通过专利号查询书目信息并提取授权公开日，用于 Google 未命中时兜底。"
+  },
+  {
+    "id": "write_tabular_data",
+    "brief": "将 enriched rows 回写到 xlsx/csv/jsonl，支持新增列（如授权公开日）并输出新文件路径。"
+  },
+  {
+    "id": "patent_grant_date_enrichment",
+    "brief": "【说明书】专利授权公开日回写流程：读表→提取专利号→Google优先/EPO兜底→回写授权公开日。"
+  },
+  {
     "id": "query_reimbursement_policy",
     "brief": "查询公司内部的差旅、打车、餐饮等报销制度和规定。"
   },
