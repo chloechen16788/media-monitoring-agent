@@ -12,6 +12,7 @@
   - provider: 标注模型来源，"gemini"(默认，Google 原生 API，QPS 高) | "gateway"(OpenAI 兼容网关，备用) | "local"(预留)。
   - max_workers: 并发数，上限 64；默认值按模式自适应：blurb=2、content=23。
   - max_records: 单批最大条数（成本围栏），默认 1500，超出报错要求分批。
+  - flush_every: 可选。增量落盘间隔，默认 100。每完成指定条数会把已完成标注原子写入 output_jsonl；重跑同一路径时会读取已有结果并跳过，避免超时后从零开始。
   - progress_file: 可选。进度写入路径（旁路文件，不打 stdout），形如 {"done","total","ok","fail"}。
   - manifest_path: 可选。若提供可自动定位批次并回写状态。
   - batch_id: 可选。配合 manifest_path 指定处理某个批次；不传则自动选择第一个 status=exported 的批次。
@@ -29,10 +30,10 @@
   - SKILL_TAGGING_PROXY: 可选，需要翻墙时设代理（如 http://127.0.0.1:7890），直连留空。
   gateway provider（备用，OpenAI 兼容网关）:
   - SKILL_TAGGING_GATEWAY_URL / SKILL_TAGGING_GATEWAY_MODEL (必需), SKILL_TAGGING_GATEWAY_API_KEY / SKILL_TAGGING_ENV (可选)。
-【返回格式】: JSON。成功: {"ok": true, "data": {"input_jsonl","output_jsonl","provider","input_text_mode","total","succeeded","failed","label_distribution"}}；失败: {"ok": false, "error", "hint"}。
+【返回格式】: JSON。成功: {"ok": true, "data": {"input_jsonl","output_jsonl","provider","input_text_mode","total","done","partial","resumed","flush_every","succeeded","failed","label_distribution"}}；失败: {"ok": false, "error", "hint"}。
   - 标注字段: is_important_tech_news(是/否) / reason / tech_category / location / subject。
   - 429 自动指数退避重试；非 200 与解析失败均落为可识别的标注值（错误/异常/解析失败），不中断整批。
-  - 写入采用临时文件 + 原子 rename。
+  - 写入采用临时文件 + 原子 rename；长批次会增量写 partial output，全部完成后才回写 manifest status=annotated。
 
 【示例 - 用 gateway 备用通道（OpenAI 兼容）】:
 python skills/executor/bmw_tag_jsonl.py "{\"manifest_path\":\"./workspace/bmw_demo/manifest.json\",\"provider\":\"gateway\",\"max_workers\":4}"

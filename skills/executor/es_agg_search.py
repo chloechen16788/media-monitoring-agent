@@ -1,11 +1,13 @@
 import json
-import urllib.request
-import urllib.error
 from datetime import datetime
 import traceback
 import sys
+import os
 
-ES_URL = "http://139.198.17.239:9203"
+from es_http import EsRequestError, es_search_timeout, post_json, resolve_es_runtime
+
+
+ES_URL = os.environ.get("SKILL_ES_URL", "http://139.198.17.239:9203")
 
 SENTIMENT_MAP = {
     0: "正面",
@@ -124,6 +126,7 @@ def execute(params: dict) -> str:
     end_time = params.get("end_time")
     dimensions = params.get("dimensions", ["sov"])
     sentiment_filter = params.get("sentiment_filter")
+    timeout_sec, max_retries = resolve_es_runtime(params)
     try:
         entity_top_n = int(params.get("entity_top_n") or 10)
     except (TypeError, ValueError):
@@ -322,18 +325,21 @@ def execute(params: dict) -> str:
                 },
             }
 
-        payload = {"size": 0, "query": {"bool": {"filter": must_filters}}, "aggs": aggs}
-        req = urllib.request.Request(
-            f"{ES_URL}/{index_name}/_search",
-            data=json.dumps(payload).encode("utf-8"),
-            method="POST",
-            headers={"Content-Type": "application/json"},
+        payload = {
+            "size": 0,
+            "timeout": es_search_timeout(timeout_sec),
+            "query": {"bool": {"filter": must_filters}},
+            "aggs": aggs,
+        }
+        data, es_meta = post_json(
+            f"{ES_URL}/{index_name}/_search?request_cache=true",
+            payload,
+            timeout_sec,
+            max_retries,
         )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
 
         es_aggs = data.get("aggregations", {})
-        result = {"total_hits": data.get("hits", {}).get("total", {}).get("value", 0), "aggs": {}}
+        result = {"total_hits": data.get("hits", {}).get("total", {}).get("value", 0), "aggs": {}, "es": es_meta}
 
         if "sov_agg" in es_aggs:
             result["aggs"]["sov"] = [{"task_id": b["key"], "doc_count": b["doc_count"]} for b in es_aggs["sov_agg"].get("buckets", [])]
@@ -493,6 +499,15 @@ def execute(params: dict) -> str:
                 for t in es_aggs["effect_agg"].get("buckets", [])
             }
         return json.dumps(result, ensure_ascii=False, indent=2)
+    except EsRequestError as e:
+        return json.dumps({
+            "error": f"ES聚合查询失败: {str(e)}",
+            "hint": "已按 es_timeout_sec/SKILL_ES_TIMEOUT_SEC 执行超时控制并自动重试。若仍失败，请减少 dimensions、缩小时间范围，或提高 es_timeout_sec。",
+            "es": {
+                "timeout_sec": e.timeout_sec,
+                "attempts": e.attempts,
+            },
+        }, ensure_ascii=False)
     except Exception as e:
         return json.dumps({"error": f"ES聚合查询失败: {str(e)}", "details": traceback.format_exc()})
 

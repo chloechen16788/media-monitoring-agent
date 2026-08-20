@@ -106,5 +106,41 @@
   {
     "id": "chart_render_schema",
     "brief": "【说明书】图表渲染协议：定义各报告模板下每个图表的类型、数据源字段与统计口径。撰写报告洞察前务必查阅。"
+  },
+  {
+    "id": "doubao_search",
+    "brief": "【取数/搜专利】豆包 web_search 多 query 并发检索，按标题去重、可按 query 内写明的时间段筛选，导出 xlsx。搜专利时把「50条<时间>汽车行业专利」类查询放进 queries。"
+  },
+  {
+    "id": "anysearch_industry_news",
+    "brief": "【取数】AnySearch 固定 11 个中国产业主题（具身智能/智驾算法/传感器/汽车芯片/座舱/电池/储能/三电/底盘/车联网/工业制造），每主题 5 组变体检索、窗口期筛选、每主题最多 50 条，导出多 sheet xlsx。必须提供 start/end。"
+  },
+  {
+    "id": "qingbo_domain_pri_export",
+    "brief": "【取数】清博模板 B：一级域名定向（18 个汽车科技站点）× 11 主题词 AND 事件词，按标题去重，导出多 sheet xlsx。必须提供 start/end（YYYY-MM-DD HH:MM:SS）；count_only 只统计不导出。"
+  },
+  {
+    "id": "qingbo_pedaily_export",
+    "brief": "【取数】清博模板 C：投资界 pedaily.cn 标题检索 IPO,融资，按标题去重导出 xlsx。必须提供 start/end（YYYY-MM-DD HH:MM:SS）；count_only 只统计不导出。"
+  },
+  {
+    "id": "qingbo_weixin_export",
+    "brief": "【取数】清博微信公众号定向：固定 40 个科技/汽车/储能公众号名单（mp.weixin.qq.com），按 uuid/url 去重导出 xlsx。必须提供 start/end（YYYY-MM-DD HH:MM:SS）；count_only 只统计不导出。"
+  },
+  {
+    "id": "deepseek_excel_tagging",
+    "brief": "【筛选】读取 Excel 标题+正文，DeepSeek 逐行判定是否高价值硬核科技新闻，追加 5 列（is_important_tech_news/reason/tech_category/location/subject）导出新 xlsx，供人工挑选。"
+  },
+  {
+    "id": "news_fulltext_excel",
+    "brief": "【补正文】按 items=[{title,url}] 抓取新闻正文，站点专用+通用解析，去导航/相关推荐/重复段落，导出固定 7 列 xlsx（序号/标题/作者/媒体/url/日期/正文）；可用 patches 人工修订字段。无需密钥。"
+  },
+  {
+    "id": "news_excel_format",
+    "brief": "【格式化】读取周报 Excel（需含列「新闻标题」「新闻正文」），GPT(OpenCode)+DeepSeek 双摘要，DeepSeek 抽分类标签与专利号，追加 4 列（正文摘要-GPT/正文摘要-Deepseek/备注/专利号）导出 _格式化.xlsx。"
+  },
+  {
+    "id": "news_pipeline",
+    "brief": "【说明书】新闻周报流水线：取数（doubao/anysearch/qingbo×3）→ 筛选(deepseek_excel_tagging + 人工挑) → 补数(复用取数) → 补正文(news_fulltext_excel) → 格式化(news_excel_format) →[去重/溯源待补]。含各 skill 入出参、时间参数与人工检查点。"
   }
 ]

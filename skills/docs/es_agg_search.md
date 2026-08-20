@@ -10,7 +10,9 @@
    ["sov", "trend", "channel", "sentiment", "sources", "effect_metrics", "trend_by_channel", "trend_by_sentiment", "prn_distribution", "named_entities", "keyword_freq", "category", "sub_category", "tag", "trend_by_category", "trend_by_tag"]，获取所需维度数据。
   - sentiment_filter (可选): 情感过滤数组，如 [-1]（仅负面）、[0,1]（仅正+中）。适用于所有维度，常用于“负面趋势线”场景。
   - entity_top_n (可选): 当 dimensions 含 `named_entities` 时，每种实体类型（PERSON/ORGANIZATION/LOCATION）返回的 TopN 数量，默认 10，最大 50。全局混合 Top 列表也会至少返回该数量（上限 20 与 entity_top_n 取较大值）。
-【返回格式】: JSON 格式的数据统计结果。
+  - es_timeout_sec: 可选。ES 单次请求超时秒数，默认 60；也可用环境变量 `SKILL_ES_TIMEOUT_SEC` 配置。维度多、时间范围大时可提高到 90/120。
+  - es_max_retries: 可选。ES 超时或 429/5xx 的自动重试次数，默认 2；也可用环境变量 `SKILL_ES_MAX_RETRIES` 配置。
+【返回格式】: JSON 格式的数据统计结果。返回中的 `es` 字段包含 timeout_sec、attempts、elapsed_ms，便于根据实际成功耗时继续调参。
 
 【新增维度说明】:
   - trend_by_sentiment: 返回按天聚合、再按情感拆分的趋势结果。可直接用于绘制“正/中/负三条线”。

@@ -117,6 +117,7 @@ BLURB_BATCH_SIZE = 30
 BLURB_MAX_WORKERS_DEFAULT = 2
 CONTENT_MAX_WORKERS_DEFAULT = 23
 DEFAULT_REQUEST_TIMEOUT_SEC = 120
+DEFAULT_FLUSH_EVERY = 100
 # Excel / openpyxl 非法字符（保留 \t \n \r）
 ILLEGAL_EXCEL_CHAR_RE = re.compile(r"[\x00-\x08\x0B-\x0C\x0E-\x1F]")
 
@@ -164,6 +165,38 @@ def read_jsonl(path: str) -> list:
             except json.JSONDecodeError:
                 continue
     return rows
+
+
+def row_identity(row: dict, fallback_idx: int) -> str:
+    """稳定识别一行，便于重跑时复用已写出的部分标注。"""
+    for key in ("_row", "row_id", "__row_id", "url", "messageUrl", "finger"):
+        value = row.get(key)
+        if value not in (None, ""):
+            return f"{key}:{value}"
+    title = str(row.get("title") or row.get("messageTitle") or "")
+    ts = str(row.get("time") or row.get("messageTime") or "")
+    if title or ts:
+        return f"title_time:{title}|{ts}"
+    return f"idx:{fallback_idx}"
+
+
+def load_existing_labels(output_jsonl: str, rows: list[dict]) -> dict[int, dict]:
+    if not output_jsonl or not os.path.exists(output_jsonl):
+        return {}
+
+    row_key_to_idx = {row_identity(row, idx): idx for idx, row in enumerate(rows)}
+    labels = {}
+    for out_row in read_jsonl(output_jsonl):
+        if not isinstance(out_row, dict):
+            continue
+        key = row_identity(out_row, -1)
+        idx = row_key_to_idx.get(key)
+        if idx is None:
+            continue
+        label = {k: out_row.get(k, "") for k in LABEL_KEYS}
+        if any(label.values()):
+            labels[idx] = label
+    return labels
 
 
 def sanitize_excel_illegal_chars(value):
@@ -385,14 +418,27 @@ def tag_batch(caller, prompt: str, expected_indices: list[int], max_retries: int
     }
 
 
-def write_progress(progress_file: str, done: int, total: int, ok: int, fail_cnt: int) -> None:
+def write_progress(
+    progress_file: str,
+    done: int,
+    total: int,
+    ok: int,
+    fail_cnt: int,
+    output_jsonl: str = "",
+    partial: bool = False,
+) -> None:
     if not progress_file:
         return
     try:
-        atomic_write(progress_file, json.dumps({
+        payload = {
             "done": done, "total": total, "ok": ok, "fail": fail_cnt,
             "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        }, ensure_ascii=False))
+        }
+        if output_jsonl:
+            payload["output_jsonl"] = os.path.abspath(output_jsonl)
+        if partial:
+            payload["partial"] = True
+        atomic_write(progress_file, json.dumps(payload, ensure_ascii=False))
     except OSError:
         pass
 
@@ -512,6 +558,12 @@ def main() -> None:
     except (TypeError, ValueError):
         fail("max_records 必须是整数。")
 
+    try:
+        flush_every = int(params.get("flush_every") or DEFAULT_FLUSH_EVERY)
+    except (TypeError, ValueError):
+        fail("flush_every 必须是整数。")
+    flush_every = max(1, flush_every)
+
     progress_file = str(params.get("progress_file") or "")
     prompt_template = str(params.get("prompt_override") or BMW_PROMPT_TEMPLATE)
     batch_prompt_template = str(params.get("batch_prompt_override") or BMW_BATCH_PROMPT_TEMPLATE)
@@ -530,11 +582,49 @@ def main() -> None:
         fail(caller_err, "请检查标注模型环境变量配置；标注模型仅用于标注，不用于对话。")
 
     total = len(rows)
-    results_map = {}
-    done = 0
-    ok_cnt = 0
-    fail_cnt = 0
-    write_progress(progress_file, 0, total, 0, 0)
+    results_map = load_existing_labels(output_jsonl, rows)
+    existing_done = len(results_map)
+
+    def is_success_label(label: dict) -> bool:
+        return str(label.get("is_important_tech_news")) in ("是", "否")
+
+    done = len(results_map)
+    ok_cnt = sum(1 for label in results_map.values() if is_success_label(label))
+    fail_cnt = done - ok_cnt
+    write_progress(
+        progress_file,
+        done,
+        total,
+        ok_cnt,
+        fail_cnt,
+        output_jsonl=output_jsonl,
+        partial=done < total,
+    )
+
+    last_flushed_done = done
+
+    def build_output_lines():
+        label_dist = {}
+        out_lines = []
+        for i, row in enumerate(rows):
+            if i not in results_map:
+                continue
+            label = results_map[i]
+            merged = dict(row)
+            merged.update(label)
+            cleaned = sanitize_excel_illegal_chars(merged)
+            out_lines.append(json.dumps(cleaned, ensure_ascii=False))
+            key = str(label.get("is_important_tech_news", "缺失"))
+            label_dist[key] = label_dist.get(key, 0) + 1
+        return out_lines, label_dist
+
+    def flush_output(force: bool = False):
+        nonlocal last_flushed_done
+        if not force and done - last_flushed_done < flush_every:
+            return
+        out_lines, _ = build_output_lines()
+        atomic_write(output_jsonl, "\n".join(out_lines) + ("\n" if out_lines else ""))
+        last_flushed_done = done
 
     def task(idx_row):
         idx, row = idx_row
@@ -564,6 +654,8 @@ def main() -> None:
             chunk_items = []
             chunk_indices = []
             for idx in range(start, end):
+                if idx in results_map:
+                    continue
                 row = rows[idx]
                 chunk_indices.append(idx)
                 chunk_items.append({
@@ -571,7 +663,8 @@ def main() -> None:
                     "title": str(row.get(title_field, "")),
                     "blurb": str(row.get(blurb_field, "")),
                 })
-            chunks.append((chunk_indices, chunk_items))
+            if chunk_indices:
+                chunks.append((chunk_indices, chunk_items))
 
         def batch_task(chunk):
             idx_list, item_list = chunk
@@ -589,41 +682,50 @@ def main() -> None:
                 for idx, label in label_map.items():
                     results_map[idx] = label
                     done += 1
-                    if str(label.get("is_important_tech_news")) in ("是", "否"):
+                    if is_success_label(label):
                         ok_cnt += 1
                     else:
                         fail_cnt += 1
                 if done % 20 == 0 or done == total:
-                    write_progress(progress_file, done, total, ok_cnt, fail_cnt)
+                    write_progress(
+                        progress_file,
+                        done,
+                        total,
+                        ok_cnt,
+                        fail_cnt,
+                        output_jsonl=output_jsonl,
+                        partial=done < total,
+                    )
+                flush_output(force=(done == total))
     else:
         with ThreadPoolExecutor(max_workers=max_workers) as ex:
-            futures = [ex.submit(task, (i, r)) for i, r in enumerate(rows)]
+            futures = [ex.submit(task, (i, r)) for i, r in enumerate(rows) if i not in results_map]
             for fut in as_completed(futures):
                 idx, label = fut.result()
                 results_map[idx] = label
                 done += 1
-                if str(label.get("is_important_tech_news")) in ("是", "否"):
+                if is_success_label(label):
                     ok_cnt += 1
                 else:
                     fail_cnt += 1
                 if done % 20 == 0 or done == total:
-                    write_progress(progress_file, done, total, ok_cnt, fail_cnt)
+                    write_progress(
+                        progress_file,
+                        done,
+                        total,
+                        ok_cnt,
+                        fail_cnt,
+                        output_jsonl=output_jsonl,
+                        partial=done < total,
+                    )
+                flush_output(force=(done == total))
 
     # 顺序回填，原字段全保留，标注字段横向追加
-    label_dist = {}
-    out_lines = []
-    for i, row in enumerate(rows):
-        label = results_map.get(i, {"is_important_tech_news": "缺失", "reason": "未返回结果"})
-        merged = dict(row)
-        merged.update(label)
-        cleaned = sanitize_excel_illegal_chars(merged)
-        out_lines.append(json.dumps(cleaned, ensure_ascii=False))
-        key = str(label.get("is_important_tech_news", "缺失"))
-        label_dist[key] = label_dist.get(key, 0) + 1
-
+    out_lines, label_dist = build_output_lines()
     atomic_write(output_jsonl, "\n".join(out_lines) + ("\n" if out_lines else ""))
-    write_progress(progress_file, done, total, ok_cnt, fail_cnt)
-    update_manifest(manifest_path, batch_id, output_jsonl)
+    write_progress(progress_file, done, total, ok_cnt, fail_cnt, output_jsonl=output_jsonl, partial=done < total)
+    if done == total:
+        update_manifest(manifest_path, batch_id, output_jsonl)
 
     result = {
         "ok": True,
@@ -633,9 +735,13 @@ def main() -> None:
             "provider": provider,
             "input_text_mode": input_text_mode,
             "total": total,
+            "done": done,
+            "resumed": existing_done > 0,
+            "flush_every": flush_every,
             "succeeded": ok_cnt,
             "failed": fail_cnt,
             "label_distribution": label_dist,
+            "partial": done < total,
         },
     }
     print(json.dumps(result, ensure_ascii=False))

@@ -215,10 +215,11 @@ main() {
 
   [[ -d "${new_release}/gateway" ]] || abort "源码不完整：缺少 gateway 目录。"
   [[ -d "${new_release}/frontend" ]] || abort "源码不完整：缺少 frontend 目录。"
-  [[ -d "${new_release}/open-codex-source/codex-cli" ]] || abort "源码不完整：缺少 codex-cli 目录。"
+  [[ -d "${new_release}/agent-core" ]] || abort "源码不完整：缺少 agent-core 目录。"
 
   log "4/9 安装依赖并构建"
-  pushd "${new_release}/open-codex-source/codex-cli" >/dev/null
+  # V3：worker 由 agent-core 提供（gateway 默认 WORKER_PATH 指向 agent-core/dist/worker.js）。
+  pushd "${new_release}/agent-core" >/dev/null
   npm_install
   /usr/bin/npm run build
   popd >/dev/null

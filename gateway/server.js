@@ -237,6 +237,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// 托管前端构建产物（Vite dist）：前后端同源，无需跨域。
+// 可用 FRONTEND_DIST 覆盖目录；目录不存在时静态中间件不会报错。
+const FRONTEND_DIST = process.env.FRONTEND_DIST || path.resolve(__dirname, '../frontend/dist');
+app.use(express.static(FRONTEND_DIST));
+
 function getUserIdFromRequest(req) {
   return req.query.userId || req.body?.userId || req.headers['x-user-id'];
 }
@@ -1035,7 +1040,11 @@ app.patch('/api/sessions/:sessionId/title', (req, res) => {
 });
 
 // 子进程 worker.js 的路径
-const WORKER_PATH = path.resolve(__dirname, '../open-codex-source/codex-cli/dist/worker.js');
+// V3: 默认指向 agent-core（无 shell / 无 CLI 的最小核心）。
+// 如需临时回退旧 worker，设置 WORKER_PATH 环境变量覆盖。
+const WORKER_PATH =
+  process.env.WORKER_PATH ||
+  path.resolve(__dirname, '../agent-core/dist/worker.js');
 
 // ==========================================
 // 3. 核心流式对话接口
@@ -1114,6 +1123,17 @@ app.post('/api/chat', (req, res) => {
       'X-Agent-Prompt-Hash': promptHash,
       'X-Agent-Policy': resolvedAgentMode === 'master' ? 'plan_only' : 'execute_contract',
     });
+    if (typeof res.flushHeaders === 'function') res.flushHeaders();
+
+    // SSE 心跳保活：长任务（如逐行打标、采集）期间 worker 会阻塞在 python skill 上、
+    // stdout 长时间无输出。若连接空闲会被中间层/浏览器判定断开，触发下方 close 处理
+    // 把正在跑的 worker 误杀（code null），任务半途夭折且前端无反馈。每 15s 发一个
+    // SSE 注释行（EventSource 会忽略）即可保活，不影响事件解析。
+    const heartbeat = setInterval(() => {
+      if (!res.writableEnded) {
+        try { res.write(`: ping ${Date.now()}\n\n`); } catch (_) { /* ignore */ }
+      }
+    }, 15000);
 
     // 启动 Headless 隔离的 Agent 子进程
     const workerNodeBin = process.env.WORKER_NODE_BIN || process.execPath;
@@ -1132,6 +1152,11 @@ app.post('/api/chat', (req, res) => {
         WORKER_AGENT_SYSTEM_PROMPT: rolePrompt,
         WORKER_TASK_CONTRACT_FILE: projectPaths.taskContractFile,
         WORKER_ALLOWED_SKILLS: JSON.stringify(allowedSkills),
+        // V3 agent-core: 三层记忆定位所需的租户上下文
+        WORKER_USER_ID: String(row.user_id || ''),
+        WORKER_PROJECT_ID: String(row.project_id || ''),
+        WORKER_SESSION_ID: String(sessionId || ''),
+        WORKER_DATA_ROOT: DATA_ROOT,
       }
     });
 
@@ -1208,6 +1233,7 @@ app.post('/api/chat', (req, res) => {
     });
 
     worker.on('close', (code) => {
+      clearInterval(heartbeat);
       if (stdoutBuffer.trim()) {
         handleWorkerStdoutLine(stdoutBuffer);
         stdoutBuffer = '';
@@ -1247,6 +1273,7 @@ app.post('/api/chat', (req, res) => {
 
     // 处理客户端断开连接
     req.connection.on('close', () => {
+      clearInterval(heartbeat);
       if (!res.writableEnded) {
         console.log(`Client disconnected unexpectedly, killing worker [${sessionId}]`);
         worker.kill();
@@ -1359,8 +1386,23 @@ app.post('/api/generate-report', (req, res) => {
   runner.stdin.end();
 });
 
+// SPA 回退：非 /api 的 GET 请求（前端路由深链接）统一返回 index.html。
+// 放在所有 API 路由之后，避免拦截接口。
+app.use((req, res, next) => {
+  if (req.method !== 'GET') return next();
+  if (req.path.startsWith('/api')) return next();
+  const indexFile = path.join(FRONTEND_DIST, 'index.html');
+  if (fs.existsSync(indexFile)) return res.sendFile(indexFile);
+  return next();
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Gateway listening on port ${PORT}`);
   console.log(`SSE Endpoint ready at http://localhost:${PORT}/api/chat`);
+  if (fs.existsSync(path.join(FRONTEND_DIST, 'index.html'))) {
+    console.log(`Frontend served at   http://localhost:${PORT}/`);
+  } else {
+    console.log(`Frontend dist not found at ${FRONTEND_DIST} (run: cd frontend && npm run build)`);
+  }
 });

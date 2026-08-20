@@ -9,7 +9,14 @@
       "group": "planner",
       "entry": "skills/planner/identify_report_type.py",
       "enabled": true,
-      "brief": "【Master 规划】根据用户意图识别报告类型（品牌月报 / 竞品周报）。"
+      "brief": "【Master 规划】根据用户意图识别报告类型（品牌月报 / 竞品周报）。",
+      "input_schema": {
+        "type": "object",
+        "required": ["text"],
+        "properties": {
+          "text": {"type": "string", "description": "用户意图文本"}
+        }
+      }
     },
     {
       "id": "plan_charts",
@@ -18,7 +25,14 @@
       "group": "planner",
       "entry": "skills/planner/plan_charts.py",
       "enabled": true,
-      "brief": "【Master 规划】基于报告类型输出图表计划与建议的 allowed_skills。"
+      "brief": "【Master 规划】基于报告类型输出图表计划与建议的 allowed_skills。",
+      "input_schema": {
+        "type": "object",
+        "required": ["report_type"],
+        "properties": {
+          "report_type": {"type": "string", "description": "报告类型，如 brand_monthly / competitor_weekly"}
+        }
+      }
     },
     {
       "id": "write_task_contract",
@@ -60,7 +74,7 @@
       "entry": "skills/executor/es_agg_search.py",
       "enabled": true,
       "brief": "执行宏观数据统计与聚合。支持声量份额/趋势/渠道/情感及实体、词频、分类标签占比与趋势等多维交叉统计。",
-      "env": ["SKILL_ES_URL"],
+      "env": ["SKILL_ES_URL", "SKILL_ES_TIMEOUT_SEC", "SKILL_ES_MAX_RETRIES"],
       "input_schema": {
         "type": "object",
         "required": ["task_ids", "start_time", "end_time", "dimensions"],
@@ -96,7 +110,9 @@
             "minItems": 1
           },
           "sentiment_filter": {"type": "array", "items": {"type": "integer"}},
-          "entity_top_n": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10}
+          "entity_top_n": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+          "es_timeout_sec": {"type": "integer", "minimum": 5, "maximum": 300, "default": 60},
+          "es_max_retries": {"type": "integer", "minimum": 0, "maximum": 5, "default": 2}
         }
       },
       "output_schema": {
@@ -106,7 +122,8 @@
           "aggs": {"type": "object"},
           "error": {"type": "string"},
           "hint": {"type": "string"},
-          "details": {"type": "string"}
+          "details": {"type": "string"},
+          "es": {"type": "object"}
         }
       }
     },
@@ -118,7 +135,7 @@
       "entry": "skills/executor/es_sample_search.py",
       "enabled": true,
       "brief": "微观聚类抽样。基于相似度指纹(finger)获取特定任务下传播声量最大的、不重复的首发新闻与评论长文本，用于大模型归因分析。",
-      "env": ["SKILL_ES_URL"],
+      "env": ["SKILL_ES_URL", "SKILL_ES_TIMEOUT_SEC", "SKILL_ES_MAX_RETRIES"],
       "input_schema": {
         "type": "object",
         "required": ["task_ids", "start_time", "end_time"],
@@ -133,6 +150,8 @@
           "content_max_chars": {"type": "integer", "minimum": 0, "default": 1500},
           "output_jsonl": {"type": "string"},
           "include_articles": {"type": "boolean"},
+          "es_timeout_sec": {"type": "integer", "minimum": 5, "maximum": 300, "default": 60},
+          "es_max_retries": {"type": "integer", "minimum": 0, "maximum": 5, "default": 2},
           "sentiment_filter": {"type": "integer"},
           "channel_filter": {
             "oneOf": [
@@ -150,7 +169,8 @@
           "articles": {"type": "array", "items": {"type": "object"}},
           "error": {"type": "string"},
           "hint": {"type": "string"},
-          "details": {"type": "string"}
+          "details": {"type": "string"},
+          "es": {"type": "object"}
         }
       }
     },
@@ -238,6 +258,7 @@
           "provider": {"type": "string", "enum": ["gemini", "gateway", "local"], "default": "gemini"},
           "max_workers": {"type": "integer", "minimum": 1, "maximum": 64, "default": 2},
           "max_records": {"type": "integer", "minimum": 1, "default": 1500},
+          "flush_every": {"type": "integer", "minimum": 1, "default": 100},
           "progress_file": {"type": "string"},
           "manifest_path": {"type": "string"},
           "batch_id": {"type": "integer"},
@@ -271,7 +292,16 @@
       "group": "executor",
       "entry": "skills/web_search.py",
       "enabled": true,
-      "brief": "浅度联网搜索：查询互联网上的实时信息、新闻、百科等外部客观事实，返回摘要结果。"
+      "arg_style": "text",
+      "arg_key": "query",
+      "brief": "浅度联网搜索：查询互联网上的实时信息、新闻、百科等外部客观事实，返回摘要结果。",
+      "input_schema": {
+        "type": "object",
+        "required": ["query"],
+        "properties": {
+          "query": {"type": "string", "description": "搜索查询词"}
+        }
+      }
     },
     {
       "id": "deep_web_crawl",
@@ -280,7 +310,16 @@
       "group": "executor",
       "entry": "skills/deep_web_crawl.py",
       "enabled": true,
-      "brief": "深度网页阅读：提供具体的URL链接，抓取并读取该网页的完整长篇内容（转为Markdown格式）。"
+      "arg_style": "text",
+      "arg_key": "url",
+      "brief": "深度网页阅读：提供具体的URL链接，抓取并读取该网页的完整长篇内容（转为Markdown格式）。",
+      "input_schema": {
+        "type": "object",
+        "required": ["url"],
+        "properties": {
+          "url": {"type": "string", "description": "要抓取的网页完整 URL"}
+        }
+      }
     },
     {
       "id": "read_tabular_data",
@@ -454,7 +493,16 @@
       "group": "executor",
       "entry": "skills/send_feishu_message.py",
       "enabled": true,
-      "brief": "向指定员工、部门负责人或主管发送一条飞书消息或提醒。"
+      "arg_style": "argparse",
+      "brief": "向指定员工、部门负责人或主管发送一条飞书消息或提醒。",
+      "input_schema": {
+        "type": "object",
+        "required": ["target", "message"],
+        "properties": {
+          "target": {"type": "string", "description": "目标人标识符（如员工ID或 manager）"},
+          "message": {"type": "string", "description": "发送的具体消息内容"}
+        }
+      }
     },
     {
       "id": "render_line_chart",
@@ -633,6 +681,275 @@
       "entry": "skills/chart_render_schema.json",
       "enabled": true,
       "brief": "【说明书】图表渲染协议：定义各报告模板下每个图表的类型、数据源字段与统计口径。撰写报告洞察前务必查阅。"
+    },
+    {
+      "id": "doubao_search",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/executor/doubao_search.py",
+      "enabled": true,
+      "env": ["DOUBAO_API_KEY"],
+      "timeout_ms": 300000,
+      "brief": "【取数/搜专利】豆包 web_search 多 query 并发检索，按标题去重、可按 query 内写明的时间段筛选，导出 xlsx。搜专利时把「50条<时间>汽车行业专利」类查询放进 queries。",
+      "input_schema": {
+        "type": "object",
+        "required": ["queries"],
+        "properties": {
+          "queries": {"type": "array", "items": {"type": "string"}, "minItems": 1, "description": "检索词数组；如需时间段筛选可在词中写明如 3.1-3.7"},
+          "max_workers": {"type": "integer", "minimum": 1, "maximum": 8, "default": 3},
+          "export_dir": {"type": "string", "default": "./workspace"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "anysearch_industry_news",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/executor/anysearch_industry_news.py",
+      "enabled": true,
+      "env": ["ANYSEARCH_API_KEY"],
+      "timeout_ms": 600000,
+      "brief": "【取数】AnySearch 固定 11 个中国产业主题（具身智能/智驾算法/传感器/汽车芯片/座舱/电池/储能/三电/底盘/车联网/工业制造），每主题 5 组变体检索、窗口期筛选、每主题最多 50 条，导出多 sheet xlsx。必须提供 start/end。",
+      "input_schema": {
+        "type": "object",
+        "required": ["start", "end"],
+        "properties": {
+          "start": {"type": "string", "description": "起始日期 YYYY-MM-DD"},
+          "end": {"type": "string", "description": "结束日期 YYYY-MM-DD"},
+          "max_per_topic": {"type": "integer", "minimum": 1, "maximum": 50, "default": 50},
+          "export_dir": {"type": "string", "default": "./workspace"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "qingbo_domain_pri_export",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/executor/qingbo_domain_pri_export.py",
+      "enabled": true,
+      "env": ["QINGBO_BASE_URL", "QINGBO_PROJECT_ID", "QINGBO_SIGN", "QINGBO_ROUTER"],
+      "timeout_ms": 600000,
+      "brief": "【取数】清博模板 B：一级域名定向（18 个汽车科技站点）× 11 主题词 AND 事件词，按标题去重，导出多 sheet xlsx。必须提供 start/end（YYYY-MM-DD HH:MM:SS）；count_only 只统计不导出。",
+      "input_schema": {
+        "type": "object",
+        "required": ["start", "end"],
+        "properties": {
+          "start": {"type": "string", "description": "发布时间起 YYYY-MM-DD HH:MM:SS"},
+          "end": {"type": "string", "description": "发布时间止 YYYY-MM-DD HH:MM:SS"},
+          "count_only": {"type": "boolean", "default": false},
+          "export_dir": {"type": "string", "default": "./workspace"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "qingbo_pedaily_export",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/executor/qingbo_pedaily_export.py",
+      "enabled": true,
+      "env": ["QINGBO_BASE_URL", "QINGBO_PROJECT_ID", "QINGBO_SIGN", "QINGBO_ROUTER"],
+      "timeout_ms": 600000,
+      "brief": "【取数】清博模板 C：投资界 pedaily.cn 标题检索 IPO,融资，按标题去重导出 xlsx。必须提供 start/end（YYYY-MM-DD HH:MM:SS）；count_only 只统计不导出。",
+      "input_schema": {
+        "type": "object",
+        "required": ["start", "end"],
+        "properties": {
+          "start": {"type": "string", "description": "发布时间起 YYYY-MM-DD HH:MM:SS"},
+          "end": {"type": "string", "description": "发布时间止 YYYY-MM-DD HH:MM:SS"},
+          "count_only": {"type": "boolean", "default": false},
+          "export_dir": {"type": "string", "default": "./workspace"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "qingbo_weixin_export",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/executor/qingbo_weixin_export.py",
+      "enabled": true,
+      "env": ["QINGBO_BASE_URL", "QINGBO_PROJECT_ID", "QINGBO_SIGN", "QINGBO_ROUTER"],
+      "timeout_ms": 600000,
+      "brief": "【取数】清博微信公众号定向：固定 40 个科技/汽车/储能公众号名单（mp.weixin.qq.com），按 uuid/url 去重导出 xlsx。必须提供 start/end（YYYY-MM-DD HH:MM:SS）；count_only 只统计不导出。",
+      "input_schema": {
+        "type": "object",
+        "required": ["start", "end"],
+        "properties": {
+          "start": {"type": "string", "description": "发布时间起 YYYY-MM-DD HH:MM:SS"},
+          "end": {"type": "string", "description": "发布时间止 YYYY-MM-DD HH:MM:SS"},
+          "count_only": {"type": "boolean", "default": false},
+          "export_dir": {"type": "string", "default": "./workspace"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "deepseek_excel_tagging",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/executor/deepseek_excel_tagging.py",
+      "enabled": true,
+      "env": ["DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL", "DEEPSEEK_MODEL"],
+      "timeout_ms": 900000,
+      "brief": "【筛选】读取 Excel 标题+正文，DeepSeek 逐行判定是否高价值硬核科技新闻，追加 5 列（is_important_tech_news/reason/tech_category/location/subject）导出新 xlsx，供人工挑选。",
+      "input_schema": {
+        "type": "object",
+        "required": ["input_path"],
+        "properties": {
+          "input_path": {"type": "string", "description": "待打标 Excel 路径"},
+          "sheet": {"type": "string", "description": "sheet 名，默认第一个"},
+          "title_col": {"type": "string", "default": "标题"},
+          "content_col": {"type": "string", "default": "正文"},
+          "max_workers": {"type": "integer", "minimum": 1, "maximum": 16, "default": 4},
+          "export_dir": {"type": "string", "default": "./workspace"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "news_fulltext_excel",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/executor/news_fulltext_excel.py",
+      "enabled": true,
+      "timeout_ms": 600000,
+      "brief": "【补正文】按 items=[{title,url}] 抓取新闻正文，站点专用+通用解析，去导航/相关推荐/重复段落，导出固定 7 列 xlsx（序号/标题/作者/媒体/url/日期/正文）；可用 patches 人工修订字段。无需密钥。",
+      "input_schema": {
+        "type": "object",
+        "required": ["items"],
+        "properties": {
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["url"],
+              "properties": {
+                "title": {"type": "string"},
+                "url": {"type": "string"}
+              }
+            }
+          },
+          "patches": {
+            "type": "array",
+            "items": {"type": "object", "properties": {"url": {"type": "string"}}}
+          },
+          "filename": {"type": "string"},
+          "export_dir": {"type": "string", "default": "./workspace"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "news_excel_format",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/executor/news_excel_format.py",
+      "enabled": true,
+      "env": ["OPENCODE_API_KEY", "OPENCODE_BASE_URL", "OPENCODE_MODEL", "OPENCODE_CONCURRENCY", "DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL", "DEEPSEEK_MODEL"],
+      "timeout_ms": 900000,
+      "brief": "【格式化】读取周报 Excel（需含列「新闻标题」「新闻正文」），GPT(OpenCode)+DeepSeek 双摘要，DeepSeek 抽分类标签与专利号，追加 4 列（正文摘要-GPT/正文摘要-Deepseek/备注/专利号）导出 _格式化.xlsx。",
+      "input_schema": {
+        "type": "object",
+        "required": ["input_path"],
+        "properties": {
+          "input_path": {"type": "string", "description": "待格式化 Excel 路径"},
+          "sheet": {"type": "string", "description": "sheet 名，默认第一个"},
+          "export_dir": {"type": "string", "default": "./workspace"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "news_pipeline",
+      "type": "doc",
+      "group": "doc",
+      "entry": "skills/docs/news_pipeline.md",
+      "enabled": true,
+      "brief": "【说明书】新闻周报流水线：取数（doubao/anysearch/qingbo×3）→ 筛选(deepseek_excel_tagging + 人工挑) → 补数(复用取数) → 补正文(news_fulltext_excel) → 格式化(news_excel_format) →[去重/溯源待补]。含各 skill 入出参、时间参数与人工检查点。"
     }
   ]
 }

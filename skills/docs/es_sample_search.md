@@ -13,6 +13,8 @@
   - content_max_chars: 可选。正文 content_snippet 截断上限，默认 1500（图表归因场景保持不变）。标注取数流程建议传 2000；传 0 表示不截断（返回全文）。
   - output_jsonl: 可选。若传入则把结果写入该 JSONL 路径（每行一条），用于大批量链路传递，避免工具消息体过大。
   - include_articles: 可选。是否在 stdout 返回 articles。默认规则：未传 output_jsonl 时返回；传了 output_jsonl 时默认不返回（可显式设 true 覆盖）。
+  - es_timeout_sec: 可选。ES 单次请求超时秒数，默认 60；也可用环境变量 `SKILL_ES_TIMEOUT_SEC` 配置。BMW 大批量取数如遇超时可提高到 90/120。
+  - es_max_retries: 可选。ES 超时或 429/5xx 的自动重试次数，默认 2；也可用环境变量 `SKILL_ES_MAX_RETRIES` 配置。
 【返回格式】: 包含原文片段、媒体来源和渠道字段的热门文章 JSON 列表。`articles` 每条含：
   - taskId / title / url / author / media / time
   - dataChannel: ES 原始渠道 ID
@@ -20,3 +22,4 @@
   - blurb: ES 返回的摘要字段（若无则空）
   - fingerprint_cluster_size / content_snippet
   - 若传 output_jsonl，还会返回 file_path（绝对路径）与 output_jsonl（原始入参路径）。
+  - es: ES 请求元信息，包含 timeout_sec、attempts、elapsed_ms，便于根据实际成功耗时继续调参。

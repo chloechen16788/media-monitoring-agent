@@ -1,4 +1,0 @@
-◇ injected env (2) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
-Gateway listening on port 3000
-SSE Endpoint ready at http://localhost:3000/api/chat
-✅ SQLite Database connected.

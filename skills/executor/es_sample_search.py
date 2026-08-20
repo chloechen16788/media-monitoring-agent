@@ -1,12 +1,13 @@
 import json
-import urllib.request
-import urllib.error
 import traceback
 import os
 from datetime import datetime
 import sys
 
-ES_URL = "http://139.198.17.239:9203"
+from es_http import EsRequestError, es_search_timeout, post_json, resolve_es_runtime
+
+
+ES_URL = os.environ.get("SKILL_ES_URL", "http://139.198.17.239:9203")
 # INDEX_NAME will be built dynamically using uid and partition
 
 DATA_CHANNEL_MAP = {
@@ -151,7 +152,8 @@ def execute(params: dict) -> str:
     index_name = f"{uid}_{partition}"
         
     try:
-        url = f"{ES_URL}/{index_name}/_search"
+        timeout_sec, max_retries = resolve_es_runtime(params)
+        url = f"{ES_URL}/{index_name}/_search?request_cache=true"
         
         must_filters = [
             {"terms": {"taskId": task_ids}},
@@ -185,6 +187,8 @@ def execute(params: dict) -> str:
             
         payload = {
             "size": 0,
+            "track_total_hits": False,
+            "timeout": es_search_timeout(timeout_sec),
             "query": {
                 "bool": {
                     "filter": must_filters
@@ -222,12 +226,7 @@ def execute(params: dict) -> str:
             }
         }
         
-        body = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(url, data=body, method="POST")
-        req.add_header("Content-Type", "application/json")
-        
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+        data, es_meta = post_json(url, payload, timeout_sec, max_retries)
             
         buckets = data.get("aggregations", {}).get("cluster_list", {}).get("buckets", [])
         
@@ -266,13 +265,22 @@ def execute(params: dict) -> str:
             file_path = _write_jsonl(output_jsonl, results)
 
         out = {"status": "success", "extracted_count": len(results)}
+        out["es"] = es_meta
         if file_path:
             out["file_path"] = file_path
             out["output_jsonl"] = output_jsonl
         if include_articles:
             out["articles"] = results
         return json.dumps(out, ensure_ascii=False, indent=2)
-        
+    except EsRequestError as e:
+        return json.dumps({
+            "error": f"ES抽样查询失败: {str(e)}",
+            "hint": "已按 es_timeout_sec/SKILL_ES_TIMEOUT_SEC 执行超时控制并自动重试。若仍失败，请缩小时间范围、降低 size，或提高 es_timeout_sec。",
+            "es": {
+                "timeout_sec": e.timeout_sec,
+                "attempts": e.attempts,
+            },
+        }, ensure_ascii=False)
     except Exception as e:
         err_msg = traceback.format_exc()
         return json.dumps({"error": f"ES抽样查询失败: {str(e)}", "details": err_msg})

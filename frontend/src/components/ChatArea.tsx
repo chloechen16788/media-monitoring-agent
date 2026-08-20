@@ -78,6 +78,7 @@ export default function ChatArea({
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
+  const [liveProgress, setLiveProgress] = useState('');
   const [attachedFilePath, setAttachedFilePath] = useState<string | null>(null);
   const [skills, setSkills] = useState<SkillItem[]>([]);
   const [displayAgentMode, setDisplayAgentMode] = useState<AgentMode>(agentMode);
@@ -557,6 +558,7 @@ export default function ChatArea({
     setAttachedFilePath(null);
     setIsStreaming(true);
     isStreamingRef.current = true;
+    setLiveProgress('');
     lastAssistantChunkAtRef.current = 0;
     hasAssistantChunkRef.current = false;
     abortReasonRef.current = 'manual';
@@ -603,8 +605,16 @@ export default function ChatArea({
             const dataStr = line.replace('data: ', '');
             try {
               const event = JSON.parse(dataStr);
+              if (event.type === 'progress') {
+                // 长任务的实时进度（存活计时 + skill 打到 stderr 的真实进度），
+                // 只用于展示，不进历史。新的模型输出到来时会被下方分支清掉。
+                const skill = event.data?.skill ? `${event.data.skill}: ` : '';
+                setLiveProgress(`${skill}${event.data?.message || ''}`);
+                continue;
+              }
               if (event.type === 'item') {
                 const role = event.data.role;
+                setLiveProgress('');
                 if (role === 'assistant' && (event.data.content != null || event.data.tool_calls)) {
                   let textDelta =
                     typeof event.data.content === 'string'
@@ -645,6 +655,7 @@ export default function ChatArea({
                   );
                 }
               } else if (event.type === 'done' || event.type === 'exit') {
+                setLiveProgress('');
                 onTaskContractChanged?.();
               }
             } catch (_e) {
@@ -679,6 +690,7 @@ export default function ChatArea({
     } finally {
       setIsStreaming(false);
       isStreamingRef.current = false;
+      setLiveProgress('');
       abortControllerRef.current = null;
       onTaskContractChanged?.();
       // Sub 交接优先于排队消息：用户点了「开始执行」就必须立刻交接，不能被后续输入抢占
@@ -901,6 +913,23 @@ export default function ChatArea({
                 </div>
               </div>
             ))}
+            {isStreaming && liveProgress && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  margin: '4px 0 8px 52px',
+                  fontSize: 12,
+                  color: 'var(--text-secondary, #8a8f98)',
+                  fontFamily:
+                    'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+                }}
+              >
+                <i className="ri-loader-4-line" style={{ animation: 'spin 1s linear infinite' }} />
+                <span>{liveProgress}</span>
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
 
