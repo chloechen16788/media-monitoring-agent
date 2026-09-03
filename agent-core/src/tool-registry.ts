@@ -27,10 +27,12 @@ export function loadRegistry(skillsDir: string): Registry {
  * injected into the system prompt for both roles. Master needs full capability
  * awareness to plan; Sub needs it to emit accurate SKILL_FALLBACK.
  */
-export function buildCatalogText(registry: Registry): string {
+export function buildCatalogText(registry: Registry, allowlist?: Array<string> | null): string {
+  const allowed = allowlist && allowlist.length > 0 ? new Set(allowlist) : null;
   const lines: Array<string> = [];
   for (const s of registry.skills) {
     if (!s.enabled) continue;
+    if (allowed && !allowed.has(s.id)) continue;
     const role = s.type === "doc" ? "doc" : s.role ?? "-";
     lines.push(`- ${s.id} [${role}]: ${s.brief ?? ""}`);
   }
@@ -55,6 +57,20 @@ function formatSkillResult(skill: RegistrySkill, r: SkillRunResult): string {
     });
   }
   const out = r.stdout.trim();
+  // Inject produced_files (workspace basenames) so the gateway/frontend can render
+  // download links regardless of each skill's own output field naming.
+  if (r.producedFiles.length > 0) {
+    try {
+      const parsed = out.length > 0 ? JSON.parse(out) : {};
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        (parsed as Record<string, unknown>).produced_files = r.producedFiles;
+        return JSON.stringify(parsed);
+      }
+    } catch {
+      /* stdout wasn't JSON; fall through to wrapper below */
+    }
+    return JSON.stringify({ ok: true, produced_files: r.producedFiles, stdout: out.slice(0, 2000) });
+  }
   return out.length > 0 ? out : JSON.stringify({ ok: true, note: "skill produced no stdout" });
 }
 
@@ -87,18 +103,30 @@ function readSkillDoc(registry: Registry, skillsDir: string, projectRoot: string
   return `${meta}\n${readFileSync(docPath, "utf8").trimEnd()}`;
 }
 
-function getSkillDocTool(registry: Registry, skillsDir: string, projectRoot: string): Tool {
+function getSkillDocTool(
+  registry: Registry,
+  skillsDir: string,
+  projectRoot: string,
+  allowlist?: Array<string> | null,
+): Tool {
+  const allowed = allowlist && allowlist.length > 0 ? new Set(allowlist) : null;
   return {
     name: "get_skill_doc",
     description:
-      "读取任意技能的完整说明书（参数、用法、样例、流程）。规划或执行前用它了解技能能力；不受角色与 allowed_skills 限制。",
+      "读取技能的完整说明书（参数、用法、样例、流程）。规划或执行前用它了解技能能力。",
     parameters: {
       type: "object",
       required: ["skill_id"],
       additionalProperties: false,
       properties: { skill_id: { type: "string" } },
     },
-    run: async (args) => readSkillDoc(registry, skillsDir, projectRoot, String(args.skill_id || "")),
+    run: async (args) => {
+      const skillId = String(args.skill_id || "");
+      if (allowed && !allowed.has(skillId)) {
+        return `错误: 当前用户无权查阅技能 '${skillId}'。`;
+      }
+      return readSkillDoc(registry, skillsDir, projectRoot, skillId);
+    },
   };
 }
 
@@ -155,30 +183,39 @@ export interface ToolRegistryOptions {
   allowedSkills: Array<string>;
   runnerConfig: SkillRunnerConfig;
   memoryPaths: MemoryPaths;
+  /** Per-user skill allowlist. Empty/omitted = unrestricted. */
+  userSkillAllowlist?: Array<string> | null;
 }
 
 /**
  * The complete model-visible tool table. Executable tools are role-scoped
  * (security boundary 1); knowledge tools (get_skill_doc / memory_write) are
- * always present.
+ * always present. userSkillAllowlist is a hard cap for both roles.
  */
 export class ToolRegistry {
   private tools = new Map<string, Tool>();
 
   constructor(opts: ToolRegistryOptions) {
-    const { registry, mode, allowedSkills, runnerConfig, memoryPaths } = opts;
-    const executable = registry.skills.filter(
-      (s) =>
-        s.enabled &&
-        s.type === "script" &&
-        (mode === "master"
-          ? s.role === "master"
-          : s.role === "sub" && allowedSkills.includes(s.id)),
-    );
+    const { registry, mode, allowedSkills, runnerConfig, memoryPaths, userSkillAllowlist } = opts;
+    const userAllowed =
+      userSkillAllowlist && userSkillAllowlist.length > 0 ? new Set(userSkillAllowlist) : null;
+    // Master 默认拥有全部 script 技能执行权；Sub 限定在契约 allowed_skills。
+    // 若设置了用户白名单，两端都只能执行名单内技能（cmm 等受限账号）。
+    const executable = registry.skills.filter((s) => {
+      if (!s.enabled || s.type !== "script") return false;
+      if (userAllowed && !userAllowed.has(s.id)) return false;
+      if (mode === "master") return true;
+      return s.role === "sub" && allowedSkills.includes(s.id);
+    });
     for (const skill of executable) {
       this.tools.set(skill.id, makeSkillTool(skill, runnerConfig));
     }
-    const docTool = getSkillDocTool(registry, runnerConfig.skillsDir, runnerConfig.projectRoot);
+    const docTool = getSkillDocTool(
+      registry,
+      runnerConfig.skillsDir,
+      runnerConfig.projectRoot,
+      userSkillAllowlist,
+    );
     this.tools.set(docTool.name, docTool);
     const memTool = memoryWriteTool(memoryPaths);
     this.tools.set(memTool.name, memTool);

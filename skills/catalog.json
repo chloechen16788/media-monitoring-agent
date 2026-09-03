@@ -45,7 +45,7 @@
   },
   {
     "id": "read_tabular_data",
-    "brief": "读取 xlsx/csv/jsonl 并标准化为 rows，对每行附加 row_id 与源行号，供后续抽取和回写复用。"
+    "brief": "【读表】读取 xlsx/csv/jsonl 并返回 rows 原文（不打标）。可用 fields 只留指定列；不要用打标技能来读某一列。"
   },
   {
     "id": "extract_patent_numbers",
@@ -61,7 +61,7 @@
   },
   {
     "id": "write_tabular_data",
-    "brief": "将 enriched rows 回写到 xlsx/csv/jsonl，支持新增列（如授权公开日）并输出新文件路径。"
+    "brief": "【写表】把 rows 回写到 xlsx/csv/jsonl 新文件，可新增列并保留原表结构。"
   },
   {
     "id": "patent_grant_date_enrichment",
@@ -138,6 +138,38 @@
   {
     "id": "news_excel_format",
     "brief": "【格式化】读取周报 Excel（需含列「新闻标题」「新闻正文」），GPT(OpenCode)+DeepSeek 双摘要，DeepSeek 抽分类标签与专利号，追加 4 列（正文摘要-GPT/正文摘要-Deepseek/备注/专利号）导出 _格式化.xlsx。"
+  },
+  {
+    "id": "ske_social_tagging",
+    "brief": "【打标】读取上传的 Excel/CSV，按指定列+提示词逐行生成字段（默认 SKE 社媒：media/date/author/sentiment/summary/分类/原链接），同时导出 xlsx 与 csv 供下载。"
+  },
+  {
+    "id": "summarize_recent_chats",
+    "brief": "【日志】查看最近 24 小时（可改 hours）有更新的会话，抽取对话正文并生成中文简报 markdown。默认仅当前工号；all_users=true 可看全站。"
+  },
+  {
+    "id": "xiaohongshu_keyword_search",
+    "brief": "【取数】小红书关键字搜索（无正文，含粉丝）：TikHub 检索去重，无标题才补详情，再按作者拉粉丝，导出 Excel。只要列表不要粉丝时用 xiaohongshu_keyword_search_nofans。必须提供 keywords。"
+  },
+  {
+    "id": "xiaohongshu_keyword_search_fulltext",
+    "brief": "【取数】小红书关键字搜索（带正文，含粉丝）：TikHub 检索去重后逐条补正文并拉粉丝，导出 Excel。成本含每条详情+每个作者。必须提供 keywords。"
+  },
+  {
+    "id": "xiaohongshu_keyword_search_nofans",
+    "brief": "【取数】小红书关键字搜索（无正文、无粉丝，省钱）：只检索+去重，不调 get_user_info，Excel 无粉丝列。默认优先用于只要列表的场景。必须提供 keywords。"
+  },
+  {
+    "id": "xiaohongshu_note_detail_by_links",
+    "brief": "【取数】读取 Excel/CSV 的笔记链接列，提取 note_id，逐条调 TikHub 图文/视频详情，把点赞/收藏/评论/转发写回原表导出。不搜关键词、默认不拉粉丝。必须提供 input_path。"
+  },
+  {
+    "id": "xiaohongshu_user_posted_notes",
+    "brief": "【取数】按小红书博主账号 id 拉已发布笔记（无正文、无粉丝）：TikHub get_user_posted_notes 游标翻页，默认 10 页，Excel 列与关键字搜索无粉丝版相同。必须提供 user_id。"
+  },
+  {
+    "id": "reddit_keyword_search",
+    "brief": "【取数】按关键词搜 Reddit 帖子并导出 Excel：TikHub 动态搜索（只搜帖子，默认 NEW + month）→ 批量详情 → 每帖评论 NEW 翻 2 页。必须提供 query/keywords。"
   },
   {
     "id": "news_pipeline",

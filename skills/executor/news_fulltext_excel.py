@@ -434,7 +434,13 @@ def run(params: dict) -> dict:
 
     export_dir.mkdir(parents=True, exist_ok=True)
     stamp = date.today().strftime("%Y%m%d")
-    out_name = params.get("filename") or f"新闻正文_{stamp}.xlsx"
+    out_name = str(params.get("filename") or "").strip() or f"新闻正文_{stamp}.xlsx"
+    lower = out_name.lower()
+    if not lower.endswith((".xlsx", ".xlsm")):
+        if lower.endswith((".csv", ".xls")):
+            out_name = f"{out_name.rsplit('.', 1)[0]}.xlsx"
+        else:
+            out_name = f"{out_name}.xlsx"
     out_path = (export_dir / out_name).resolve()
     write_excel(rows, out_path)
 

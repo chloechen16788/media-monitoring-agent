@@ -6,7 +6,24 @@ import ReactECharts from 'echarts-for-react';
 import { jsonrepair } from 'jsonrepair';
 import 'echarts-wordcloud';
 import styles from './MessageRenderer.module.css';
-import { apiUrl } from '../config/api';
+import { apiUrl, downloadUrl } from '../config/api';
+
+/** Pull produced_files (workspace basenames) out of a tool_result block's raw text. */
+function extractProducedFiles(raw: string): string[] {
+  const stripped = raw.replace(/```[a-zA-Z]*\n?/g, '').replace(/```/g, '').trim();
+  const start = stripped.indexOf('{');
+  const end = stripped.lastIndexOf('}');
+  if (start === -1 || end === -1 || end <= start) return [];
+  const jsonStr = stripped.slice(start, end + 1);
+  try {
+    const parsed = JSON.parse(jsonStr);
+    const files = parsed?.produced_files;
+    if (Array.isArray(files)) return files.filter((f: unknown) => typeof f === 'string' && f.length > 0);
+  } catch {
+    /* not parseable */
+  }
+  return [];
+}
 
 interface MessageRendererProps {
   content: string;
@@ -508,16 +525,47 @@ ${slotsContext}
             title = "正在" + title.replace("过程", "");
           }
           
+          const producedFiles =
+            block.type === 'tool_result' && sessionId ? extractProducedFiles(block.content) : [];
+
           return (
-            <details key={i} className={styles.thinkBlock} open={block.isStreaming}>
-              <summary>
-                <i className={icon}></i> 
-                {title}
-              </summary>
-              <div className={styles.thinkContent}>
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{block.content}</ReactMarkdown>
-              </div>
-            </details>
+            <React.Fragment key={i}>
+              <details className={styles.thinkBlock} open={block.isStreaming}>
+                <summary>
+                  <i className={icon}></i> 
+                  {title}
+                </summary>
+                <div className={styles.thinkContent}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{block.content}</ReactMarkdown>
+                </div>
+              </details>
+              {producedFiles.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '6px 0 10px' }}>
+                  {producedFiles.map((name) => (
+                    <a
+                      key={name}
+                      href={downloadUrl(sessionId, name, { userId, projectId })}
+                      download
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        padding: '6px 12px',
+                        borderRadius: 8,
+                        border: '1px solid var(--border-color, #d0d7de)',
+                        background: 'var(--bg-secondary, #f6f8fa)',
+                        color: 'var(--text-primary, #1f2328)',
+                        fontSize: 13,
+                        textDecoration: 'none',
+                      }}
+                    >
+                      <i className="ri-download-2-line" />
+                      <span>{name}</span>
+                    </a>
+                  ))}
+                </div>
+              )}
+            </React.Fragment>
           );
         }
         

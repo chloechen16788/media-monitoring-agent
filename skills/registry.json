@@ -191,7 +191,7 @@
           "input_jsonl_dir": {"type": "string"},
           "input_jsonl": {"type": "string"},
           "report_name": {"type": "string"},
-          "filename": {"type": "string"},
+          "filename": {"type": "string", "description": "导出文件名，未带 .xlsx 时自动补上"},
           "export_dir": {"type": "string", "default": "./workspace"}
         }
       },
@@ -328,7 +328,7 @@
       "group": "executor",
       "entry": "skills/executor/read_tabular_data.py",
       "enabled": true,
-      "brief": "读取 xlsx/csv/jsonl 并标准化为 rows，对每行附加 row_id 与源行号，供后续抽取和回写复用。",
+      "brief": "【读表】读取 xlsx/csv/jsonl 并返回 rows 原文（不打标）。可用 fields 只留指定列；不要用打标技能来读某一列。",
       "input_schema": {
         "type": "object",
         "required": ["source_path"],
@@ -448,7 +448,7 @@
       "group": "executor",
       "entry": "skills/executor/write_tabular_data.py",
       "enabled": true,
-      "brief": "将 enriched rows 回写到 xlsx/csv/jsonl，支持新增列（如授权公开日）并输出新文件路径。",
+      "brief": "【写表】把 rows 回写到 xlsx/csv/jsonl 新文件，可新增列并保留原表结构。",
       "input_schema": {
         "type": "object",
         "required": ["source_path", "rows"],
@@ -898,7 +898,7 @@
             "type": "array",
             "items": {"type": "object", "properties": {"url": {"type": "string"}}}
           },
-          "filename": {"type": "string"},
+          "filename": {"type": "string", "description": "导出文件名，未带 .xlsx 时自动补上"},
           "export_dir": {"type": "string", "default": "./workspace"}
         }
       },
@@ -929,6 +929,334 @@
         "properties": {
           "input_path": {"type": "string", "description": "待格式化 Excel 路径"},
           "sheet": {"type": "string", "description": "sheet 名，默认第一个"},
+          "export_dir": {"type": "string", "default": "./workspace"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "ske_social_tagging",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/executor/ske_social_tagging.py",
+      "enabled": true,
+      "env": ["DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL", "DEEPSEEK_MODEL"],
+      "timeout_ms": 900000,
+      "brief": "【打标】读取上传的 Excel/CSV，按指定列+提示词逐行生成字段（默认 SKE 社媒：media/date/author/sentiment/summary/分类/原链接），同时导出 xlsx 与 csv 供下载。",
+      "input_schema": {
+        "type": "object",
+        "required": ["input_path"],
+        "properties": {
+          "input_path": {"type": "string", "description": "待处理的 xlsx 或 csv 路径，上传附件一般为 ./uploads/<filename>"},
+          "text_col": {"type": "string", "default": "文本", "description": "作为分析源的列名"},
+          "prompt": {"type": "string", "description": "覆盖默认 SKE 社媒提示词"},
+          "output_columns": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "要生成的列名，默认 media/date/author/sentiment/summary/分类/原链接"
+          },
+          "sheet": {"type": "string", "description": "xlsx sheet 名，默认第一个"},
+          "max_workers": {"type": "integer", "minimum": 1, "maximum": 16, "default": 8},
+          "max_rows": {"type": "integer", "minimum": 1, "description": "只处理前 N 行（调试）"},
+          "year": {"type": "integer", "description": "覆盖当前年，用于 date 字段"},
+          "export_dir": {"type": "string", "default": "./workspace"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "summarize_recent_chats",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/executor/summarize_recent_chats.py",
+      "enabled": true,
+      "env": [
+        "DEEPSEEK_API_KEY",
+        "DEEPSEEK_BASE_URL",
+        "DEEPSEEK_MODEL",
+        "WORKER_DATA_ROOT",
+        "WORKER_USER_ID",
+        "WORKER_PROJECT_ROOT",
+        "GATEWAY_DB_PATH"
+      ],
+      "timeout_ms": 180000,
+      "brief": "【日志】查看最近 24 小时（可改 hours）有更新的会话，抽取对话正文并生成中文简报 markdown。默认仅当前工号；all_users=true 可看全站。",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "hours": {"type": "number", "minimum": 0.1, "maximum": 168, "default": 24, "description": "回看小时数，默认 24"},
+          "all_users": {"type": "boolean", "default": false, "description": "true 时扫描全部工号的会话"},
+          "user_id": {"type": "string", "description": "覆盖当前工号；all_users=true 时忽略"},
+          "export_dir": {"type": "string", "default": "./workspace"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "xiaohongshu_keyword_search",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/executor/xiaohongshu_keyword_search.py",
+      "enabled": true,
+      "env": ["SKILL_TIKHUB_API_KEY", "SKILL_TIKHUB_BASE_URL", "SKILL_TIKHUB_PROXY"],
+      "timeout_ms": 600000,
+      "brief": "【取数】小红书关键字搜索（无正文，含粉丝）：TikHub 检索去重，无标题才补详情，再按作者拉粉丝，导出 Excel。只要列表不要粉丝时用 xiaohongshu_keyword_search_nofans。必须提供 keywords。",
+      "input_schema": {
+        "type": "object",
+        "required": ["keywords"],
+        "properties": {
+          "keywords": {
+            "description": "关键词字符串或数组，多个词可并发",
+            "oneOf": [
+              {"type": "string", "minLength": 1},
+              {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+            ]
+          },
+          "pages": {"type": "integer", "minimum": 1, "maximum": 20, "default": 10},
+          "workers": {"type": "integer", "minimum": 1, "maximum": 10, "default": 5},
+          "filename": {"type": "string", "description": "导出文件名，未带 .xlsx 时自动补上"},
+          "export_dir": {"type": "string", "default": "./workspace"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "xiaohongshu_keyword_search_fulltext",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/executor/xiaohongshu_keyword_search_fulltext.py",
+      "enabled": true,
+      "env": ["SKILL_TIKHUB_API_KEY", "SKILL_TIKHUB_BASE_URL", "SKILL_TIKHUB_PROXY"],
+      "timeout_ms": 600000,
+      "brief": "【取数】小红书关键字搜索（带正文，含粉丝）：TikHub 检索去重后逐条补正文并拉粉丝，导出 Excel。成本含每条详情+每个作者。必须提供 keywords。",
+      "input_schema": {
+        "type": "object",
+        "required": ["keywords"],
+        "properties": {
+          "keywords": {
+            "description": "关键词字符串或数组，多个词可并发",
+            "oneOf": [
+              {"type": "string", "minLength": 1},
+              {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+            ]
+          },
+          "pages": {"type": "integer", "minimum": 1, "maximum": 20, "default": 10},
+          "workers": {"type": "integer", "minimum": 1, "maximum": 10, "default": 5},
+          "filename": {"type": "string", "description": "导出文件名，未带 .xlsx 时自动补上"},
+          "export_dir": {"type": "string", "default": "./workspace"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "xiaohongshu_keyword_search_nofans",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/executor/xiaohongshu_keyword_search_nofans.py",
+      "enabled": true,
+      "env": ["SKILL_TIKHUB_API_KEY", "SKILL_TIKHUB_BASE_URL", "SKILL_TIKHUB_PROXY"],
+      "timeout_ms": 600000,
+      "brief": "【取数】小红书关键字搜索（无正文、无粉丝，省钱）：只检索+去重，不调 get_user_info，Excel 无粉丝列。默认优先用于只要列表的场景。必须提供 keywords。",
+      "input_schema": {
+        "type": "object",
+        "required": ["keywords"],
+        "properties": {
+          "keywords": {
+            "description": "关键词字符串或数组，多个词可并发",
+            "oneOf": [
+              {"type": "string", "minLength": 1},
+              {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+            ]
+          },
+          "pages": {"type": "integer", "minimum": 1, "maximum": 20, "default": 10},
+          "workers": {"type": "integer", "minimum": 1, "maximum": 10, "default": 5},
+          "filename": {"type": "string", "description": "导出文件名，未带 .xlsx 时自动补上"},
+          "export_dir": {"type": "string", "default": "./workspace"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "xiaohongshu_note_detail_by_links",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/executor/xiaohongshu_note_detail_by_links.py",
+      "enabled": true,
+      "env": ["SKILL_TIKHUB_API_KEY", "SKILL_TIKHUB_BASE_URL", "SKILL_TIKHUB_PROXY"],
+      "timeout_ms": 600000,
+      "brief": "【取数】读取 Excel/CSV 的笔记链接列，提取 note_id，逐条调 TikHub 图文/视频详情，把点赞/收藏/评论/转发写回原表导出。不搜关键词、默认不拉粉丝。必须提供 input_path。",
+      "input_schema": {
+        "type": "object",
+        "required": ["input_path"],
+        "properties": {
+          "input_path": {"type": "string", "description": "上传的 Excel/CSV 路径，通常为 ./uploads/<filename>"},
+          "link_col": {"type": "string", "description": "笔记链接列名，默认自动识别「笔记链接」等"},
+          "sheet": {"type": "string"},
+          "with_body": {"type": "boolean", "default": false},
+          "with_fans": {"type": "boolean", "default": false},
+          "workers": {"type": "integer", "minimum": 1, "maximum": 10, "default": 5},
+          "max_rows": {"type": "integer", "minimum": 0, "default": 0},
+          "filename": {"type": "string", "description": "导出文件名，未带 .xlsx 时自动补上"},
+          "export_dir": {"type": "string", "default": "./workspace"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "xiaohongshu_user_posted_notes",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/executor/xiaohongshu_user_posted_notes.py",
+      "enabled": true,
+      "env": ["SKILL_TIKHUB_API_KEY", "SKILL_TIKHUB_BASE_URL", "SKILL_TIKHUB_PROXY"],
+      "timeout_ms": 600000,
+      "brief": "【取数】按小红书博主账号 id 拉已发布笔记（无正文、无粉丝）：TikHub get_user_posted_notes 游标翻页，默认 10 页，Excel 列与关键字搜索无粉丝版相同。必须提供 user_id。",
+      "input_schema": {
+        "type": "object",
+        "required": ["user_id"],
+        "properties": {
+          "user_id": {
+            "description": "博主账号 id，或主页链接；多个可用数组/逗号分隔。也可用 user_ids / share_text",
+            "oneOf": [
+              {"type": "string", "minLength": 1},
+              {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+            ]
+          },
+          "user_ids": {
+            "oneOf": [
+              {"type": "string", "minLength": 1},
+              {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+            ]
+          },
+          "share_text": {"type": "string"},
+          "pages": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+          "workers": {"type": "integer", "minimum": 1, "maximum": 10, "default": 5},
+          "filename": {"type": "string", "description": "导出文件名，未带 .xlsx 时自动补上"},
+          "export_dir": {"type": "string", "default": "./workspace"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {
+          "ok": {"type": "boolean"},
+          "data": {"type": "object"},
+          "error": {"type": "string"},
+          "hint": {"type": "string"}
+        }
+      }
+    },
+    {
+      "id": "reddit_keyword_search",
+      "type": "script",
+      "role": "sub",
+      "group": "executor",
+      "entry": "skills/executor/reddit_keyword_search.py",
+      "enabled": true,
+      "env": ["SKILL_TIKHUB_API_KEY", "SKILL_TIKHUB_BASE_URL", "SKILL_TIKHUB_PROXY"],
+      "timeout_ms": 600000,
+      "brief": "【取数】按关键词搜 Reddit 帖子并导出 Excel：TikHub 动态搜索（只搜帖子，默认 NEW + month）→ 批量详情 → 每帖评论 NEW 翻 2 页。必须提供 query/keywords。",
+      "input_schema": {
+        "type": "object",
+        "required": ["query"],
+        "properties": {
+          "query": {
+            "description": "搜索关键词，字符串或数组；也可用 keywords",
+            "oneOf": [
+              {"type": "string", "minLength": 1},
+              {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+            ]
+          },
+          "keywords": {
+            "oneOf": [
+              {"type": "string", "minLength": 1},
+              {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+            ]
+          },
+          "sort": {
+            "type": "string",
+            "description": "帖子排序，默认 NEW。可选 RELEVANCE / HOT / TOP / NEW / COMMENTS",
+            "default": "NEW"
+          },
+          "time_range": {
+            "type": "string",
+            "description": "时间范围，默认 month。可选 all / year / month / week / day / hour",
+            "default": "month"
+          },
+          "pages": {"type": "integer", "minimum": 1, "maximum": 20, "default": 1},
+          "comment_pages": {"type": "integer", "minimum": 1, "maximum": 5, "default": 2},
+          "workers": {"type": "integer", "minimum": 1, "maximum": 10, "default": 5},
+          "filename": {"type": "string", "description": "导出文件名，未带 .xlsx 时自动补上"},
           "export_dir": {"type": "string", "default": "./workspace"}
         }
       },

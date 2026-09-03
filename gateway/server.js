@@ -39,6 +39,8 @@ function buildSessionPaths(userId, projectId, sessionId) {
     sessionDir,
     historyFile: path.join(sessionDir, 'messages.json'),
     uploadDir: path.join(sessionDir, 'uploads'),
+    // Skills run with cwd=sessionDir and write outputs to ./workspace.
+    workspaceDir: path.join(sessionDir, 'workspace'),
     projectDir: path.join(DATA_ROOT, normalizedUserId, 'projects', normalizedProjectId),
     taskContractFile: path.join(DATA_ROOT, normalizedUserId, 'projects', normalizedProjectId, 'task_contract.json'),
     legacyHistoryFile: path.join(LEGACY_SESSIONS_ROOT, normalizedSessionId, 'messages.json'),
@@ -236,6 +238,128 @@ const upload = multer({ storage: storage });
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// ==========================================
+// 鉴权：单一共享站点密码（门禁）+ 工号做数据区分
+// ------------------------------------------
+// ACCESS_PASSWORD 为空时鉴权关闭（本地开发默认放行），部署时务必在 .env 配置。
+// AUTH_SECRET 用于签名 token；未配置则用启动时随机值（重启即失效，仅用于本地）。
+// ==========================================
+const ACCESS_PASSWORD = process.env.ACCESS_PASSWORD || '';
+const AUTH_SECRET = process.env.AUTH_SECRET || crypto.randomBytes(32).toString('hex');
+const TOKEN_TTL_MS = Number(process.env.AUTH_TOKEN_TTL_MS || 7 * 24 * 60 * 60 * 1000); // 默认 7 天
+const AUTH_ENABLED = ACCESS_PASSWORD.length > 0;
+
+// 按工号限制可见/可执行技能。未列出的工号不受限（如 1001 全量）。
+// 可用 USER_SKILL_ALLOWLIST_JSON 覆盖，例如 {"cmm":["ske_social_tagging"]}
+const DEFAULT_USER_SKILL_ALLOWLIST = {
+  cmm: [
+    'ske_social_tagging',
+    'read_tabular_data',
+    'write_tabular_data',
+    'xiaohongshu_keyword_search',
+    'xiaohongshu_keyword_search_fulltext',
+    'xiaohongshu_keyword_search_nofans',
+    'xiaohongshu_note_detail_by_links',
+    'xiaohongshu_user_posted_notes',
+    'reddit_keyword_search',
+  ],
+};
+function parseUserSkillAllowlistMap() {
+  const out = {};
+  const add = (src) => {
+    if (!src || typeof src !== 'object' || Array.isArray(src)) return;
+    for (const [uid, ids] of Object.entries(src)) {
+      if (!Array.isArray(ids)) continue;
+      const key = String(uid);
+      const prev = out[key] || [];
+      out[key] = [...new Set([...prev, ...ids.map((x) => String(x))])];
+    }
+  };
+  add(DEFAULT_USER_SKILL_ALLOWLIST);
+  const raw = (process.env.USER_SKILL_ALLOWLIST_JSON || '').trim();
+  if (raw) {
+    try {
+      add(JSON.parse(raw));
+    } catch (_) {
+      console.error('USER_SKILL_ALLOWLIST_JSON 解析失败，仅使用默认策略');
+    }
+  }
+  return out;
+}
+const USER_SKILL_ALLOWLIST_MAP = parseUserSkillAllowlistMap();
+
+function getUserSkillAllowlist(userId) {
+  if (!userId) return null;
+  const ids = USER_SKILL_ALLOWLIST_MAP[String(userId)] || USER_SKILL_ALLOWLIST_MAP[String(userId).toLowerCase()];
+  return Array.isArray(ids) && ids.length > 0 ? ids : null;
+}
+
+function signToken(userId) {
+  const payload = { uid: String(userId || ''), exp: Date.now() + TOKEN_TTL_MS };
+  const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = crypto.createHmac('sha256', AUTH_SECRET).update(body).digest('base64url');
+  return `${body}.${sig}`;
+}
+
+function verifyToken(token) {
+  if (!token || typeof token !== 'string' || !token.includes('.')) return null;
+  const [body, sig] = token.split('.');
+  const expected = crypto.createHmac('sha256', AUTH_SECRET).update(body).digest('base64url');
+  // 定长比较，避免时序侧信道
+  const a = Buffer.from(sig || '');
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+    if (!payload || typeof payload.exp !== 'number' || payload.exp < Date.now()) return null;
+    return payload;
+  } catch (_) {
+    return null;
+  }
+}
+
+function extractToken(req) {
+  const auth = req.headers['authorization'] || req.headers['Authorization'];
+  if (auth && auth.startsWith('Bearer ')) return auth.slice('Bearer '.length).trim();
+  // 下载等 <a> 链接无法带 header，允许 query 传递 token
+  if (req.query && typeof req.query.token === 'string') return req.query.token;
+  return null;
+}
+
+// 登录：校验共享密码，签发 token。放在鉴权中间件之前，保持公开。
+app.post('/api/login', (req, res) => {
+  const { userId, password } = req.body || {};
+  if (!userId || !String(userId).trim()) {
+    return res.status(400).json({ error: '请输入工号' });
+  }
+  if (!AUTH_ENABLED) {
+    // 未配置门禁密码：直接放行（本地开发），仍签发 token 便于前端统一流程。
+    return res.json({ token: signToken(userId), userId: String(userId).trim(), authEnabled: false });
+  }
+  if (typeof password !== 'string' || password !== ACCESS_PASSWORD) {
+    return res.status(401).json({ error: '密码错误' });
+  }
+  return res.json({ token: signToken(userId), userId: String(userId).trim(), authEnabled: true });
+});
+
+// 公开健康检查端点（不鉴权）：供部署脚本/负载均衡探活，避免开启门禁后探活被 401 拦截。
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true, authEnabled: AUTH_ENABLED });
+});
+
+// 鉴权门禁：保护所有 /api/*（/api/login、/api/health 除外）。静态前端资源保持公开以便加载登录页。
+app.use((req, res, next) => {
+  if (!AUTH_ENABLED) return next();
+  if (!req.path.startsWith('/api/')) return next();
+  if (req.path === '/api/login' || req.path === '/api/health') return next();
+  const payload = verifyToken(extractToken(req));
+  if (!payload) {
+    return res.status(401).json({ error: 'unauthorized', code: 'AUTH_REQUIRED' });
+  }
+  req.authUserId = payload.uid;
+  next();
+});
 
 // 托管前端构建产物（Vite dist）：前后端同源，无需跨域。
 // 可用 FRONTEND_DIST 覆盖目录；目录不存在时静态中间件不会报错。
@@ -487,12 +611,14 @@ app.get('/api/sessions/:sessionId/download/:filename', (req, res) => {
       return res.status(500).json({ error: 'Database error' });
     }
     
-    // 安全地拼接路径，防止目录穿越 (Directory Traversal)
+    // 安全地拼接路径，防止目录穿越 (Directory Traversal)。
+    // 默认从 workspace（技能产物）取；?dir=uploads 时取上传目录。
     const sessionPaths = buildSessionPaths(sessionRow.user_id, sessionRow.project_id, sessionId);
-    const workspaceDir = sessionPaths.uploadDir;
-    const safeFilePath = path.join(workspaceDir, path.basename(path.normalize(filename)));
+    const baseDir = req.query.dir === 'uploads' ? sessionPaths.uploadDir : sessionPaths.workspaceDir;
+    const safeName = path.basename(path.normalize(filename));
+    const safeFilePath = path.join(baseDir, safeName);
     
-    if (!safeFilePath.startsWith(workspaceDir)) {
+    if (!safeFilePath.startsWith(baseDir)) {
       return res.status(403).json({ error: 'Forbidden path' });
     }
     
@@ -574,6 +700,12 @@ app.get('/api/skills/registry', (req, res) => {
       // 默认只返回启用技能，避免 UI 暴露与运行时策略不一致
       skills = skills.filter((skill) => Boolean(skill.enabled) === true);
     }
+    const viewerId = req.authUserId || getUserIdFromRequest(req);
+    const allowlist = getUserSkillAllowlist(viewerId);
+    if (allowlist) {
+      const allowed = new Set(allowlist);
+      skills = skills.filter((skill) => allowed.has(skill.id));
+    }
     res.json({
       version: registry.version,
       description: registry.description,
@@ -585,7 +717,11 @@ app.get('/api/skills/registry', (req, res) => {
   }
 });
 
-// Agent system prompt - read
+// 提示词属于系统内部资产：默认不通过 API 回显/修改，避免登录用户直连接口读取或篡改。
+// 仅本地开发按需设置 EXPOSE_AGENT_PROMPT=true 才开放编辑能力；服务器不设即锁死。
+const EXPOSE_AGENT_PROMPT = process.env.EXPOSE_AGENT_PROMPT === 'true';
+
+// Agent system prompt - read（默认不返回 content，只回元信息）
 app.get('/api/agents/:role/system-prompt', (req, res) => {
   const userId = req.query.userId;
   const role = parseAgentRole(req.params.role);
@@ -593,6 +729,10 @@ app.get('/api/agents/:role/system-prompt', (req, res) => {
   if (!role) return res.status(400).json({ error: 'role must be master or sub' });
   if (!assertRequesterMatchesTarget(req, userId)) {
     return res.status(403).json({ error: 'Forbidden: requester user mismatch' });
+  }
+  if (!EXPOSE_AGENT_PROMPT) {
+    // 不回显提示词正文；返回 403 让前端明确此能力已关闭。
+    return res.status(403).json({ error: 'system prompt is not exposed', code: 'PROMPT_HIDDEN' });
   }
   try {
     const promptFile = getPromptFileByMode(role);
@@ -603,12 +743,15 @@ app.get('/api/agents/:role/system-prompt', (req, res) => {
   }
 });
 
-// Agent system prompt - write
+// Agent system prompt - write（默认禁止，避免登录用户篡改系统提示词）
 app.put('/api/agents/:role/system-prompt', (req, res) => {
   const role = parseAgentRole(req.params.role);
   const { userId, content } = req.body || {};
   if (!userId) return res.status(400).json({ error: 'userId is required' });
   if (!role) return res.status(400).json({ error: 'role must be master or sub' });
+  if (!EXPOSE_AGENT_PROMPT) {
+    return res.status(403).json({ error: 'system prompt editing is disabled', code: 'PROMPT_HIDDEN' });
+  }
   if (typeof content !== 'string' || !content.trim()) {
     return res.status(400).json({ error: 'content(non-empty string) is required' });
   }
@@ -1097,9 +1240,13 @@ app.post('/api/chat', (req, res) => {
       active_agent: resolvedAgentMode,
       updated_at: new Date().toISOString(),
     });
-    const allowedSkills = Array.isArray(currentContract.allowed_skills)
+    let allowedSkills = Array.isArray(currentContract.allowed_skills)
       ? currentContract.allowed_skills
       : [];
+    const userSkillAllowlist = getUserSkillAllowlist(row.user_id);
+    if (userSkillAllowlist) {
+      allowedSkills = allowedSkills.filter((id) => userSkillAllowlist.includes(id));
+    }
     if (resolvedAgentMode === 'sub' && allowedSkills.length === 0) {
       return res.status(400).json({
         error: 'Sub mode requires non-empty task_contract.allowed_skills',
@@ -1152,6 +1299,7 @@ app.post('/api/chat', (req, res) => {
         WORKER_AGENT_SYSTEM_PROMPT: rolePrompt,
         WORKER_TASK_CONTRACT_FILE: projectPaths.taskContractFile,
         WORKER_ALLOWED_SKILLS: JSON.stringify(allowedSkills),
+        WORKER_USER_SKILL_ALLOWLIST: userSkillAllowlist ? JSON.stringify(userSkillAllowlist) : '',
         // V3 agent-core: 三层记忆定位所需的租户上下文
         WORKER_USER_ID: String(row.user_id || ''),
         WORKER_PROJECT_ID: String(row.project_id || ''),
@@ -1267,18 +1415,30 @@ app.post('/api/chat', (req, res) => {
         });
       }
       console.log(`Worker [${sessionId}] exited with code ${code}${workerDoneCleanly ? ' (done cleanly)' : ''}`);
-      res.write(`data: {"type": "exit", "code": ${succeeded ? 0 : code}}\n\n`);
-      res.end();
-    });
-
-    // 处理客户端断开连接
-    req.connection.on('close', () => {
-      clearInterval(heartbeat);
       if (!res.writableEnded) {
-        console.log(`Client disconnected unexpectedly, killing worker [${sessionId}]`);
-        worker.kill();
+        try {
+          res.write(`data: {"type": "exit", "code": ${succeeded ? 0 : code}}\n\n`);
+          res.end();
+        } catch (_) { /* client already gone */ }
       }
     });
+
+    // 浏览器点停止会 abort fetch；nginx 关掉上游后这里必须杀掉 worker，
+    // 否则 detached 的 Python skill 会继续跑。req.connection 在部分 Node/代理下不触发。
+    let workerKilled = false;
+    const killWorker = (why) => {
+      if (workerKilled || res.writableEnded) return;
+      workerKilled = true;
+      clearInterval(heartbeat);
+      console.log(`Client gone (${why}), killing worker [${sessionId}]`);
+      try { worker.kill('SIGTERM'); } catch (_) { /* ignore */ }
+      setTimeout(() => {
+        try { worker.kill('SIGKILL'); } catch (_) { /* ignore */ }
+      }, 1500);
+    };
+    req.on('close', () => killWorker('req close'));
+    req.on('aborted', () => killWorker('req aborted'));
+    res.on('close', () => killWorker('res close'));
   });
 });
 

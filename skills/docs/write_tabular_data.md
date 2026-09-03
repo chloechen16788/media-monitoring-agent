@@ -11,3 +11,6 @@
   - keep_meta_fields: 可选。jsonl 输出是否保留 `__` 元字段，默认 false。
 【返回格式】: JSON。成功: `{\"ok\": true, \"data\": {\"output_path\", \"file_type\", \"meta\"}}`；失败: `{\"ok\": false, \"error\", \"hint\"}`。
   - meta 含 updated_rows、updated_fields、updated_cells 等统计信息。
+【使用注意】:
+  - 产物写到指定 output_path（建议 ./workspace），回复只报文件名。
+  - 按笔记链接补小红书互动数据不要拆成读表+本技能，改用 xiaohongshu_note_detail_by_links。

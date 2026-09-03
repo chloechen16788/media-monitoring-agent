@@ -4,7 +4,7 @@ import Sidebar from './components/Sidebar';
 import ChatArea from './components/ChatArea';
 import RightSidebar from './components/RightSidebar';
 import Login from './components/Login';
-import { apiUrl } from './config/api';
+import { apiUrl, getAuthToken, setAuthToken, setAuthErrorHandler } from './config/api';
 interface RightPanelConfig {
   mode: 'citation' | 'workspace' | 'tasks';
   data: string | any;
@@ -20,8 +20,18 @@ function resolveAgentMode(state: any, contract: any): AgentMode {
   return 'master';
 }
 
+const USER_KEY = 'auth_user_id';
+
 function App() {
-  const [userId, setUserId] = useState<string | null>(null);
+  // 从 localStorage 恢复登录态（工号 + token 均在时才算已登录），解决刷新登出。
+  const [userId, setUserId] = useState<string | null>(() => {
+    try {
+      const uid = localStorage.getItem(USER_KEY);
+      return uid && getAuthToken() ? uid : null;
+    } catch {
+      return null;
+    }
+  });
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [rightPanel, setRightPanel] = useState<RightPanelConfig | null>(null);
@@ -84,13 +94,37 @@ function App() {
     }
   };
 
+  const handleLogout = () => {
+    setAuthToken(null);
+    try { localStorage.removeItem(USER_KEY); } catch { /* ignore */ }
+    setUserId(null);
+    setCurrentProjectId(null);
+    setCurrentSessionId(null);
+    setRightPanel(null);
+    setTaskContract(null);
+    setAgentMode('master');
+    setDevVisible(false);
+    lockManualMode(null);
+  };
+
+  const handleLogin = (uid: string) => {
+    try { localStorage.setItem(USER_KEY, uid); } catch { /* ignore */ }
+    setUserId(uid);
+  };
+
   useEffect(() => {
     if (!userId || !currentProjectId) return;
     refreshProjectRuntimeState(currentProjectId);
   }, [userId, currentProjectId]);
 
+  // token 失效（401）时统一登出：清 token/工号并回到登录页。
+  useEffect(() => {
+    setAuthErrorHandler(() => handleLogout());
+    return () => setAuthErrorHandler(null);
+  }, []);
+
   if (!userId) {
-    return <Login onLogin={setUserId} />;
+    return <Login onLogin={handleLogin} />;
   }
 
   const handleShowCitation = (text: string) => {
@@ -279,8 +313,11 @@ function App() {
         taskContract={taskContract}
         onOpenPlan={handleOpenTaskBoard}
         devVisible={devVisible}
-        onToggleDev={() => setDevVisible(v => !v)}
+        // 开发调试面板（提示词编辑 / 项目管理 / 当前计划）只在本地开发可用；
+        // 生产构建里 import.meta.env.DEV 为 false，三连击彩蛋失效，devVisible 恒为 false。
+        onToggleDev={() => { if (import.meta.env.DEV) setDevVisible((v) => !v); }}
         sessionRefreshSignal={sessionRefreshSignal}
+        onLogout={handleLogout}
       />
       <ChatArea 
         userId={userId} 

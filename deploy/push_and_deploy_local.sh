@@ -26,6 +26,7 @@ rsync -az --delete \
   --exclude ".firecrawl" \
   --exclude "node_modules" \
   --exclude "venv" \
+  --exclude "data" \
   --exclude "workspace" \
   --exclude "sessions" \
   --exclude "chroma_db" \

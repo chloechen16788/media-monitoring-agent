@@ -11,7 +11,11 @@
   - delimiter: 可选。csv 分隔符，默认 `,`。
   - max_rows: 可选。最多读取多少条；不传或传 0 表示不限制（默认全量读取）。
   - fields: 可选。仅保留指定字段列表。
-【返回格式】: JSON。成功: `{\"ok\": true, \"data\": {\"source_path\", \"rows\", \"meta\"}}`；失败: `{\"ok\": false, \"error\", \"hint\"}`。
+【返回格式】: JSON。成功: `{"ok": true, "data": {"source_path", "rows", "meta"}}`；失败: `{"ok": false, "error", "hint"}`。
   - rows: 每行会附带 `__row_id` 与 `__source_row_number`，用于后续精确回写。
   - meta: 包含 file_type、row_count、columns、sheet_name（xlsx）等元信息。
   - meta.max_rows_applied / meta.truncated: 用于判断是否触发了行数截断。
+【使用注意】:
+  - 只要查看/抽出某列原文（不打标、不拉接口）时用本技能；可用 `fields` 只留该列。
+  - 按笔记链接补小红书互动数据不要用本技能，改用 xiaohongshu_note_detail_by_links。
+  - 社媒打标不要用本技能，改用 ske_social_tagging。

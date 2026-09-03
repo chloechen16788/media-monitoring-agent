@@ -1,8 +1,34 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import type { RegistrySkill, RunContext, SkillRunnerConfig } from "./types.js";
 
 const DEFAULT_TIMEOUT_MS = 120_000;
+
+/** Snapshot filename -> mtimeMs for a directory (flat). Missing dir => empty. */
+function snapshotDir(dir: string): Map<string, number> {
+  const snap = new Map<string, number>();
+  if (!existsSync(dir)) return snap;
+  for (const name of readdirSync(dir)) {
+    try {
+      const st = statSync(path.join(dir, name));
+      if (st.isFile()) snap.set(name, st.mtimeMs);
+    } catch {
+      /* ignore */
+    }
+  }
+  return snap;
+}
+
+/** Files that are new or newer than the before-snapshot (i.e. produced by the run). */
+function diffProduced(before: Map<string, number>, after: Map<string, number>): Array<string> {
+  const out: Array<string> = [];
+  for (const [name, mtime] of after) {
+    const prev = before.get(name);
+    if (prev === undefined || mtime > prev) out.push(name);
+  }
+  return out;
+}
 
 /**
  * Every live skill child, tracked so the worker can tear them down when it is
@@ -110,6 +136,8 @@ export interface SkillRunResult {
   stderr: string;
   exitCode: number | null;
   timedOut: boolean;
+  /** Basenames of files created/updated in the session workspace during this run. */
+  producedFiles: Array<string>;
 }
 
 /**
@@ -126,6 +154,10 @@ export function runSkill(
   const entry = resolveEntry(skill, cfg);
   const argv = buildArgv(skill, entry, args);
   const timeoutMs = skill.timeout_ms ?? DEFAULT_TIMEOUT_MS;
+  // Skills run with cwd=sessionDir and write outputs to ./workspace. Snapshot it
+  // before the run so we can report exactly which files this run produced.
+  const workspaceDir = path.join(ctx.sessionDir, "workspace");
+  const beforeSnap = snapshotDir(workspaceDir);
 
   return new Promise<SkillRunResult>((resolve) => {
     const child = spawn(cfg.pythonBin, argv, {
@@ -145,13 +177,14 @@ export function runSkill(
     let settled = false;
     let timedOut = false;
 
-    const finish = (result: SkillRunResult) => {
+    const finish = (result: Omit<SkillRunResult, "producedFiles">) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       activeChildren.delete(child);
       if (onAbort) ctx.signal?.removeEventListener("abort", onAbort);
-      resolve(result);
+      const producedFiles = diffProduced(beforeSnap, snapshotDir(workspaceDir));
+      resolve({ ...result, producedFiles });
     };
 
     const killGroup = () => {

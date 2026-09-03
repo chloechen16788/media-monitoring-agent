@@ -28,9 +28,6 @@ export default function AgentPromptEditor({ userId }: AgentPromptEditorProps) {
         setStatus(data.error || '加载失败');
         return;
       }
-      // #region agent log
-      fetch('http://127.0.0.1:7259/ingest/a70df7fc-cfbb-44a8-b755-66bf0c1452b3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a70e32'},body:JSON.stringify({sessionId:'a70e32',runId:'m3-step2-verify',hypothesisId:'H4',location:'frontend/AgentPromptEditor.tsx:fetchPrompt',message:'prompt loaded in editor',data:{role:targetRole,contentLength:(data.content||'').length},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       setContent(data.content || '');
     } catch (e) {
       setStatus('加载失败');
@@ -61,9 +58,6 @@ export default function AgentPromptEditor({ userId }: AgentPromptEditorProps) {
         setStatus(data.error || '保存失败');
         return;
       }
-      // #region agent log
-      fetch('http://127.0.0.1:7259/ingest/a70df7fc-cfbb-44a8-b755-66bf0c1452b3',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a70e32'},body:JSON.stringify({sessionId:'a70e32',runId:'m3-step2-verify',hypothesisId:'H4',location:'frontend/AgentPromptEditor.tsx:handleSave',message:'prompt saved from editor',data:{role,contentLength:content.length},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       setStatus('保存成功，下一次聊天自动生效');
     } catch (e) {
       setStatus('保存失败');

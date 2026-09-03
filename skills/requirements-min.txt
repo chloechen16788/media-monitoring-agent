@@ -1,2 +1,10 @@
 # 最小运行依赖（按启用技能扩展）
+# Excel 读写：read/write_tabular_data、各类导出与打标 skill
 openpyxl>=3.1.0
+# HTTP 客户端：qingbo_* 定向采集
+httpx>=0.27.0
+# 表格处理：anysearch_industry_news
+pandas>=2.0.0
+# 正文解析：news_fulltext_excel（bs4 + lxml 解析器）
+beautifulsoup4>=4.12.0
+lxml>=5.0.0

@@ -25,6 +25,7 @@ interface SidebarProps {
   devVisible?: boolean;
   onToggleDev?: () => void;
   sessionRefreshSignal?: number;
+  onLogout?: () => void;
 }
 
 const PLAN_STATUS_LABELS: Record<string, string> = {
@@ -46,6 +47,7 @@ export default function Sidebar({
   devVisible = false,
   onToggleDev,
   sessionRefreshSignal,
+  onLogout,
 }: SidebarProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -232,7 +234,13 @@ export default function Sidebar({
         ) : null}
         <div className={styles.userProfile}>
           <i className="ri-user-smile-line"></i>
-          <span>{userId}</span>
+          <span className={styles.userName}>{userId}</span>
+          {onLogout && (
+            <button type="button" className={styles.logoutBtn} onClick={onLogout} title="退出登录">
+              <i className="ri-logout-box-r-line"></i>
+              退出
+            </button>
+          )}
         </div>
         {devVisible && <AgentPromptEditor userId={userId} />}
       </div>

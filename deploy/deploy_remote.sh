@@ -140,7 +140,7 @@ ensure_runtime_user_and_dirs() {
     useradd --system --home "${APP_ROOT}" --shell /usr/sbin/nologin codex
   fi
 
-  mkdir -p "${RELEASES_DIR}" "${INCOMING_DIR}" "${SHARED_DIR}/bin" "${SHARED_DIR}/data/gateway" "${SHARED_DIR}/logs"
+  mkdir -p "${RELEASES_DIR}" "${INCOMING_DIR}" "${SHARED_DIR}/bin" "${SHARED_DIR}/data/gateway" "${SHARED_DIR}/data/users" "${SHARED_DIR}/logs"
   touch "${SHARED_DIR}/data/gateway/database.sqlite"
 
   if [[ ! -f "${SHARED_DIR}/.env" ]]; then
@@ -180,6 +180,24 @@ render_template() {
     "${source}" > "${target}"
 }
 
+# 把版本目录的 data 换成指向 shared/data 的软链。
+# 若 data/ 已是真实目录（仓库带进来的），先把 users/ 抢救进 shared，再删掉后重建软链。
+# 绝不能在「data 已是指向 shared 的软链」之后对版本目录做 rsync --delete。
+link_shared_data_dir() {
+  local dest="$1"
+  mkdir -p "${SHARED_DIR}/data/users" "${SHARED_DIR}/data/gateway"
+  if [[ -e "${dest}/data" && ! -L "${dest}/data" ]]; then
+    if [[ -d "${dest}/data/users" ]]; then
+      log "抢救 ${dest}/data/users → ${SHARED_DIR}/data/users"
+      rsync -a "${dest}/data/users/" "${SHARED_DIR}/data/users/"
+    fi
+    rm -rf "${dest}/data"
+  elif [[ -L "${dest}/data" ]]; then
+    rm -f "${dest}/data"
+  fi
+  ln -sfn "${SHARED_DIR}/data" "${dest}/data"
+}
+
 wait_http_ok() {
   local url="$1"
   local retries="${2:-20}"
@@ -211,7 +229,9 @@ main() {
   mkdir -p "${new_release}"
 
   log "3/9 同步 incoming 到新版本目录: ${new_release}"
-  rsync -a --delete "${INCOMING_DIR}/" "${new_release}/"
+  # 会话正文在 shared/data/users，禁止把仓库/incoming 里的 data/ 同步进版本目录，
+  # 否则后面 ln 会变成 data/data 嵌套，部署后历史对话读不到。
+  rsync -a --delete --exclude '/data/' "${INCOMING_DIR}/" "${new_release}/"
 
   [[ -d "${new_release}/gateway" ]] || abort "源码不完整：缺少 gateway 目录。"
   [[ -d "${new_release}/frontend" ]] || abort "源码不完整：缺少 frontend 目录。"
@@ -240,7 +260,7 @@ main() {
   fi
 
   log "5/9 连接持久化数据目录"
-  ln -sfn "${SHARED_DIR}/data" "${new_release}/data"
+  link_shared_data_dir "${new_release}"
   ln -sfn "${SHARED_DIR}/data/gateway/database.sqlite" "${new_release}/gateway/database.sqlite"
 
   local prev_release=""
@@ -281,8 +301,9 @@ main() {
   fi
 
   log "8/9 执行基础健康检查"
-  wait_http_ok "http://127.0.0.1:3000/api/projects?userId=1001" 30 1
-  wait_http_ok "http://127.0.0.1:${PUBLIC_PORT}/api/projects?userId=1001" 30 1
+  # 使用公开的 /api/health（不受门禁影响），避免开启 ACCESS_PASSWORD 后探活被 401 拦截。
+  wait_http_ok "http://127.0.0.1:3000/api/health" 30 1
+  wait_http_ok "http://127.0.0.1:${PUBLIC_PORT}/api/health" 30 1
 
   log "9/9 清理旧版本（保留最近 ${KEEP_RELEASES} 个）"
   local current_target

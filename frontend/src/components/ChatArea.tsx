@@ -39,6 +39,7 @@ interface SkillItem {
   id: string;
   brief?: string;
   role?: string;
+  type?: string;
   enabled?: boolean;
 }
 
@@ -214,19 +215,29 @@ export default function ChatArea({
   useEffect(() => {
     const fetchSkills = async () => {
       try {
+        // 拉取全部启用技能（不按角色过滤），让用户可显式指定任意 skill；
+        // 执行权限仍由 agent-core 的 ToolRegistry 按角色限制，此处仅是可见性。
         const res = await fetch(
-          apiUrl(`/api/skills/registry?role=${encodeURIComponent(agentMode)}&enabled=true`)
+          apiUrl(`/api/skills/registry?enabled=true&userId=${encodeURIComponent(userId)}`)
         );
         const data = await res.json();
-        const allSkills = Array.isArray(data.skills) ? data.skills : [];
-        setSkills(allSkills);
+        const all: SkillItem[] = Array.isArray(data.skills) ? data.skills : [];
+        // 只保留可执行技能（script），排除文档类；当前角色可执行的排前面。
+        const execSkills = all.filter((s) => s.type === 'script');
+        execSkills.sort((a, b) => {
+          const ap = a.role === agentMode ? 0 : 1;
+          const bp = b.role === agentMode ? 0 : 1;
+          if (ap !== bp) return ap - bp;
+          return a.id.localeCompare(b.id);
+        });
+        setSkills(execSkills);
       } catch (e) {
         console.error('Failed to fetch skills registry', e);
         setSkills([]);
       }
     };
     fetchSkills();
-  }, [agentMode]);
+  }, [agentMode, userId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -750,14 +761,13 @@ export default function ChatArea({
       : basePrompt;
 
     if (isStreaming) {
-      const idleForMs = Date.now() - lastAssistantChunkAtRef.current;
-      const streamStillOutputting = !hasAssistantChunkRef.current || idleForMs < 1200;
-      if (streamStillOutputting) {
+      // 停止按钮与空回车：始终中止。长任务期间只有 progress、没有模型字，
+      // 旧逻辑用「1.2s 无 assistant chunk」当成空闲，空输入会直接 return，停止键点了没反应。
+      if (!trimmedInput && !attachedFilePath && !supplement) {
         abortReasonRef.current = 'manual';
         abortControllerRef.current?.abort();
         return;
       }
-      if (!trimmedInput && !attachedFilePath && !supplement) return;
       if (paramRequest) {
         setParamRequest(null);
         setParamValues({});
@@ -805,6 +815,21 @@ export default function ChatArea({
       </div>
     </div>
   );
+
+  // 角色标签样式：当前 agent 可执行的高亮，其它角色的灰显（仍可点选，权限不变）。
+  const skillRoleTagStyle = (role: string): React.CSSProperties => {
+    const active = role === agentMode;
+    return {
+      marginLeft: 6,
+      fontStyle: 'normal',
+      fontSize: 10,
+      padding: '1px 6px',
+      borderRadius: 6,
+      background: active ? 'rgba(46,160,67,0.15)' : 'rgba(120,120,120,0.15)',
+      color: active ? '#2ea043' : '#8a8f98',
+      verticalAlign: 'middle',
+    };
+  };
 
   const applySkillPrompt = (skill: SkillItem) => {
     const hasReportConfig = messages.some((m) => m.content.includes('[WORKSPACE_SCHEMA_START]'));
@@ -944,7 +969,10 @@ export default function ChatArea({
                     disabled={skill.enabled === false}
                     onClick={() => applySkillPrompt(skill)}
                   >
-                    <span>/ {skill.id}</span>
+                    <span>
+                      / {skill.id}
+                      {skill.role && <em style={skillRoleTagStyle(skill.role)}>{skill.role}</em>}
+                    </span>
                     <small>{skill.brief || '无描述'}</small>
                   </button>
                 ))}
@@ -1050,7 +1078,10 @@ export default function ChatArea({
                             disabled={skill.enabled === false}
                             onClick={() => applySkillPrompt(skill)}
                           >
-                            <span>/ {skill.id}</span>
+                            <span>
+                              / {skill.id}
+                              {skill.role && <em style={skillRoleTagStyle(skill.role)}>{skill.role}</em>}
+                            </span>
                             <small>{skill.brief || '无描述'}</small>
                           </button>
                         ))}
@@ -1079,8 +1110,18 @@ export default function ChatArea({
                 <div className={styles.rightActions}>
                   <button
                     className={`${styles.sendBtn} ${isStreaming ? styles.streaming : ''}`}
-                    onClick={handleSend}
-                    disabled={isInputLocked}
+                    type="button"
+                    title={isStreaming ? '停止' : '发送'}
+                    aria-label={isStreaming ? '停止' : '发送'}
+                    onClick={() => {
+                      if (isStreaming) {
+                        abortReasonRef.current = 'manual';
+                        abortControllerRef.current?.abort();
+                        return;
+                      }
+                      handleSend();
+                    }}
+                    disabled={isInputLocked && !isStreaming}
                   >
                     {isStreaming ? <i className="ri-stop-circle-line"></i> : <i className="ri-send-plane-fill"></i>}
                   </button>
